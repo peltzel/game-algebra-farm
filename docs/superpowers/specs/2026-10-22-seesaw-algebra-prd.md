@@ -1,6 +1,7 @@
 # Seesaw Algebra: product requirements
 
-Working title. Status: draft for Ben's approval, 2026-10-22; fading decision recorded 2026-10-23.
+Working title. Status: draft for Ben's approval, 2026-10-22; fading decision
+recorded 2026-10-23; first play feedback folded in 2026-10-23.
 
 ## 1. What this is and why
 
@@ -99,6 +100,12 @@ instrument. (Builder's call, 2026-10-22: this resolves a conflict with 4.7,
 where the dial makes material and size visible. Those cues appear only when
 the dial is in use, which is never mid-puzzle.)
 
+When the box opens on a win, what is inside is an animal whose weight matches:
+a mouse for 1, a duck for 2, up through a cow, a horse, and an elephant for
+10 and above. The number is shown next to the animal. (Ben, 2026-10-23.) This
+is the hook the motivation layer (4.14) can hang on: every solved box is an
+animal found.
+
 ### 4.4 Sign is a material (negatives)
 
 Every object has a weight relative to air: heavier than air pushes down
@@ -117,6 +124,11 @@ special "balloon" object. What it buys:
   exactly like adding a 3-block to the right. Kids discover this by playing.
 
 ### 4.5 The cloning machine (multiplication)
+
+Status of 4.5 and 4.6: design proposals, not yet played. Ben (2026-10-23) is
+not sure multiplication and division have a clean physical analogy; these are
+the best candidates so far and the next spike should test them before the
+real build commits to them.
 
 Takes a whole platform's contents and makes n identical copies, stacked.
 Early on it is a gantry spanning both sides, so it can only act on both at
@@ -177,6 +189,11 @@ object" confusion); and the x on the left is the same x as on the right.
 The dial changes the weight and may tip the seesaw. The costume changes the
 name and never can. They must look and feel completely different.
 
+Status: pulled from the spike after the first play (Ben, 2026-10-23: it was
+"just kind of confusing things"). Keep the idea for the real build, but only
+introduce it once the kid has solved boxes on both sides, and as its own
+small moment rather than a row of buttons that is always on screen.
+
 ### 4.9 Bags (parentheses)
 
 A bag holds pieces. `2(x + 3)` is two bags each holding a box and a 3 lb
@@ -206,10 +223,12 @@ the rest.
 
 ### 4.12 Tutor tools
 
-- Predict: freeze the seesaw before the next move. The tutor asks "what
-  happens if we take 3 off the left?", the kid answers, then Show animates it.
-  Prediction before action is one of the best-evidenced moves in math
-  teaching and is cheap to build.
+- Predict (cut from the spike, Ben 2026-10-23: "I don't know what that
+  means"): freeze the seesaw before the next move so the tutor can ask "what
+  happens if we take 3 off the left?" before it animates. The idea is sound
+  (prediction before action is well evidenced) but the button was not
+  self-explaining. If it returns, it is a tutor-only control with a plain
+  label, or the tutor just covers the screen with a hand.
 - Sandbox: build any board from the kid's homework on the fly, including the
   hidden weight. First version is a board editor: the tutor drags pieces onto
   the two sides and types the hidden weight into a field that is masked while
@@ -217,6 +236,38 @@ the rest.
   is a later addition, because it needs a parser, a solver, and answers for
   homework with no whole-number solution. (Builder's call, 2026-10-22.)
 - Hints: one line per puzzle, shown only on request.
+
+### 4.13 Levels, not a flat list
+
+Puzzles are grouped into named levels, each built around one new idea, with
+visible progress through each level. First play showed why: the puzzle where
+a box sits on both sides was the high point ("oh, you can actually remove
+boxes from each side"), and a simpler puzzle after it felt like a step back.
+Each level should end on its strongest puzzle, and the next level should open
+with a new idea, not an easier version of the last one. Spike levels:
+"Make it level", "What's in the box?", "Boxes on both sides".
+
+### 4.14 Motivation layer (open design question)
+
+Some of the activity is rote, and a kid who dislikes math needs a reason to
+do the next puzzle that is not "because it is good for you." Candidates,
+none chosen yet:
+
+- Collection: every opened box adds its animal to a collection. Heavier and
+  rarer animals only appear in later levels, so progress is visible as a
+  growing menagerie rather than a score.
+- Economy of moves: a puzzle solved in the fewest moves earns a mark (one to
+  three). This rewards thinking before touching, which is exactly the habit
+  the tutor wants, and it is the same thing the cut Predict button was for.
+- A frame story: the seesaw is a shipping scale and the player is weighing
+  mystery crates for a dock. Gives the levels a reason to exist and the art
+  pass a direction.
+- A level map the tutor and kid can see fill up across sessions, since
+  sessions are weekly with gaps.
+
+Caution: external rewards on a rote task can make the task feel more rote.
+Prefer rewards that come from the content (what was in the box) over points
+layered on top.
 
 ## 5. The win condition
 
@@ -250,8 +301,8 @@ What the player can do in a solving puzzle (builder's call, 2026-10-22):
 | 5 | bags | parentheses, distributing, like terms |
 | 6 | box on both sides (`3x + 2 = x + 10`) | collecting like terms across the equals sign |
 
-The dial and the costume are toys available from stage 2 onward, not stages
-of their own. Puzzles are data, not code, so the tutor sandbox and the level
+Each stage is one or more named levels (4.13). The dial is available from
+stage 2 onward; the costume is deferred (4.8). Puzzles are data, not code, so the tutor sandbox and the level
 list share one format. Each puzzle specifies the actual pieces on each side
 (a 7 may be a single 7-block or a 4 and a 3), because which pieces exist
 decides which removals are possible.
@@ -331,6 +382,11 @@ Watch list for the first kid test, chosen in advance so the test can fail:
 
 ## 12. Open questions
 
+- Which motivation layer (4.14), if any, and whether it is in the first real
+  build.
+- Whether the cloner and dealing-out (4.5, 4.6) survive a play test, and what
+  replaces them if not.
+
 - Name of the game.
 - Whether stage 3 (lifters) comes before or after stage 4 (cloner). The
   ladder above says lifters first because they are needed to undo any
@@ -341,8 +397,11 @@ Watch list for the first kid test, chosen in advance so the test can fail:
 ## 13. Roadmap
 
 1. Spike: stages 1 and 2, one afternoon, throwaway. Test with one kid.
-2. Real build of stages 1 to 6 with the tutor sandbox, from a plan written
-   off this document and the spike's lessons.
-3. Art pass: themed objects, sound.
-4. Fast-follow product: the reps puzzle game.
-5. Later: the functions game (shift 2's "variable" role, graphs, slope).
+2. Second spike: multiplication and division (the cloner and dealing out),
+   to find out whether the analogy holds before building on it.
+3. Real build of stages 1 to 6 with the tutor sandbox and a chosen
+   motivation layer, from a plan written off this document and the spikes'
+   lessons.
+4. Art pass: themed objects, sound.
+5. Fast-follow product: the reps puzzle game.
+6. Later: the functions game (shift 2's "variable" role, graphs, slope).

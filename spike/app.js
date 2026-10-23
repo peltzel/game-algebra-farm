@@ -13,15 +13,36 @@
   var BOX_SIZE = 66;
   var PALETTE_VALUES = [1, 2, 3, 5, 10];
   var DRAG_THRESHOLD = 6; // px before a press becomes a drag
+  var LETTER = 'x';       // what the box is called in the notation line
 
-  var COSTUMES = [
-    { icon: 'x',  letter: 'x', isText: true },
-    { icon: '🦆', letter: 'd' },   // duck
-    { icon: '🐘', letter: 'e' },   // elephant
-    { icon: '⛵',       letter: 'b' },   // boat
-    { icon: '✏️', letter: 'p' },   // pencil
-    { icon: '📦', letter: 'x' }    // box
+  // animal reveal: the heavier the box, the bigger the animal
+  var ANIMALS = [
+    null,
+    { emoji: '🐭', name: 'a mouse' },
+    { emoji: '🦆', name: 'a duck' },
+    { emoji: '🐈', name: 'a cat' },
+    { emoji: '🐕', name: 'a dog' },
+    { emoji: '🐐', name: 'a goat' },
+    { emoji: '🐖', name: 'a pig' },
+    { emoji: '🐑', name: 'a sheep' },
+    { emoji: '🐄', name: 'a cow' },
+    { emoji: '🐎', name: 'a horse' },
+    { emoji: '🐘', name: 'an elephant' }
   ];
+  function animalFor(weight) {
+    if (weight < 1) return null;
+    return ANIMALS[Math.min(weight, 10)];
+  }
+
+  // ---------- flat puzzle list built from LEVELS ----------
+  // FLAT[i] = { level: levelIndex, pos: positionWithinLevel, puzzle }
+  var FLAT = [];
+  LEVELS.forEach(function (lv, li) {
+    lv.puzzles.forEach(function (pz, pi) {
+      FLAT.push({ level: li, pos: pi, puzzle: pz });
+    });
+  });
+  var completed = FLAT.map(function () { return false; });   // in-memory only
 
   // ---------- state ----------
   var state = {
@@ -30,10 +51,8 @@
     board: { left: [], right: [] },  // arrays of { id, type, value }
     hiddenWeight: 0,
     history: [],
-    costume: 0,
     won: false,
-    predictArmed: false,
-    frozen: false,
+    revealed: false,   // boxes have been opened after a win
     dialMode: false,
     dialValue: 0,
     hintShown: false
@@ -57,9 +76,12 @@
   var dialEl = $('dial');
   var dialRange = $('dialRange');
   var dialValueEl = $('dialValue');
-  var showBtn = $('showBtn');
-  var predictBtn = $('predictBtn');
+  var dialNextBtn = $('dialNextBtn');
   var undoBtn = $('undoBtn');
+  var levelStripEl = $('levelStrip');
+  var levelDoneEl = $('levelDone');
+  var levelDoneTextEl = $('levelDoneText');
+  var levelDoneNextBtn = $('levelDoneNextBtn');
 
   var SVG_NS = 'http://www.w3.org/2000/svg';
   function svgEl(name, attrs) {
@@ -98,6 +120,21 @@
     return p.type === 'box' ? { w: BOX_SIZE, h: BOX_SIZE } : blockSize(p.value);
   }
 
+  function currentLevel() { return LEVELS[FLAT[state.index].level]; }
+  function isLastOfLevel() {
+    var f = FLAT[state.index];
+    return f.pos === LEVELS[f.level].puzzles.length - 1;
+  }
+  function firstIndexOfLevel(li) {
+    for (var i = 0; i < FLAT.length; i++) if (FLAT[i].level === li) return i;
+    return 0;
+  }
+  // should the boxes be drawn open, showing what is inside?
+  function boxesOpen() {
+    if (!state.won || !state.revealed || state.puzzle.goal !== 'isolate') return false;
+    return !state.dialMode || state.dialValue === state.hiddenWeight;
+  }
+
   // ---------- notation ----------
   function formatSide(pieces, letter, substitute) {
     var boxes = 0, sum = 0, parts = [];
@@ -117,17 +154,11 @@
   }
 
   function renderNotation() {
-    var letter = COSTUMES[state.costume].letter;
     var t = totals();
     var level = t.left === t.right;
-    notationEl.classList.toggle('frozen', state.frozen);
-    if (state.frozen) {
-      notationEl.textContent = '?';
-      return;
-    }
     var sub = state.dialMode ? state.dialValue : null;
-    var l = formatSide(state.board.left, letter, sub);
-    var r = formatSide(state.board.right, letter, sub);
+    var l = formatSide(state.board.left, LETTER, sub);
+    var r = formatSide(state.board.right, LETTER, sub);
     if (state.won && state.puzzle.goal === 'isolate' && !state.dialMode) {
       // put the box first so it reads "x = 4" not "4 = x"
       var boxOnLeft = state.board.left.length === 1 && state.board.left[0].type === 'box';
@@ -151,7 +182,6 @@
   }
 
   function renderBeam() {
-    if (state.frozen) return;  // predict mode: do not move until "Show"
     beamGroup.style.transform = 'rotate(' + currentAngle() + 'deg)';
   }
 
@@ -165,22 +195,32 @@
     return g;
   }
 
-  function drawBox(p, x, y) {
-    var c = COSTUMES[state.costume];
-    var g = svgEl('g', { 'class': 'piece box', 'data-id': p.id });
-    g.appendChild(svgEl('rect', { 'class': 'body', x: x, y: y + 12, width: BOX_SIZE, height: BOX_SIZE - 12, rx: 8 }));
-    var mark = svgEl('text', { 'class': 'mark', x: x + BOX_SIZE / 2, y: y + 12 + (BOX_SIZE - 12) / 2 + 2, 'font-size': 32 });
+  function drawBox(p, x, y, open) {
+    var g = svgEl('g', { 'class': 'piece box' + (open ? ' open' : ''), 'data-id': p.id });
+    var bodyTop = y + 12, bodyH = BOX_SIZE - 12;
+    var cx = x + BOX_SIZE / 2, cy = bodyTop + bodyH / 2 + 2;
+    g.appendChild(svgEl('rect', { 'class': 'body', x: x, y: bodyTop, width: BOX_SIZE, height: bodyH, rx: 8 }));
+    var mark = svgEl('text', { 'class': 'mark', x: cx, y: cy, 'font-size': 32 });
     mark.textContent = state.dialMode ? String(state.dialValue) : '?';
     g.appendChild(mark);
-    var reveal = svgEl('text', { 'class': 'reveal', x: x + BOX_SIZE / 2, y: y + 12 + (BOX_SIZE - 12) / 2 + 2, 'font-size': 32 });
-    reveal.textContent = state.hiddenWeight;
+
+    // reveal: an animal sized to the weight climbs out of the box, number stays inside
+    var reveal = svgEl('g', { 'class': 'reveal' });
+    var w = state.hiddenWeight;
+    var animal = animalFor(w);
+    if (animal) {
+      var size = 30 + Math.min(w, 10) * 4;   // 34 .. 70 SVG px (an elephant is about box-sized)
+      var a = svgEl('text', { 'class': 'animal', x: cx, y: y - size / 2 + 6, 'font-size': size });
+      a.textContent = animal.emoji;
+      reveal.appendChild(a);
+    }
+    var num = svgEl('text', { 'class': 'num', x: cx, y: cy, 'font-size': 30 });
+    num.textContent = w;
+    reveal.appendChild(num);
     g.appendChild(reveal);
+
     // lid (drawn last so it sits on top)
     g.appendChild(svgEl('rect', { 'class': 'lid', x: x - 3, y: y, width: BOX_SIZE + 6, height: 16, rx: 5 }));
-    var cos = svgEl('text', { 'class': 'costume', x: x + BOX_SIZE / 2, y: y + 8, 'font-size': c.isText ? 18 : 17,
-      'font-weight': 800, fill: '#7a3a10' });
-    cos.textContent = c.icon;
-    g.appendChild(cos);
     return g;
   }
 
@@ -188,6 +228,7 @@
     var layer = pieceLayers[side];
     while (layer.firstChild) layer.removeChild(layer.firstChild);
     var pieces = state.board[side];
+    var open = boxesOpen();
     var rows = [];
     for (var i = 0; i < pieces.length; i += PER_ROW) rows.push(pieces.slice(i, i + PER_ROW));
     for (var r = 0; r < rows.length; r++) {
@@ -201,7 +242,7 @@
         var p = row[j];
         var s = pieceSize(p);
         var y = bottom - s.h;
-        var el = p.type === 'box' ? drawBox(p, x, y) : drawWeight(p, x, y);
+        var el = p.type === 'box' ? drawBox(p, x, y, open) : drawWeight(p, x, y);
         el.setAttribute('data-side', side);
         layer.appendChild(el);
         x += s.w + GAP;
@@ -209,19 +250,56 @@
     }
   }
 
+  function renderLevelStrip() {
+    while (levelStripEl.firstChild) levelStripEl.removeChild(levelStripEl.firstChild);
+    var cur = FLAT[state.index];
+    LEVELS.forEach(function (lv, li) {
+      var d = document.createElement('div');
+      d.className = 'level' + (li === cur.level ? ' current' : '');
+      d.setAttribute('data-level', li);
+      d.title = lv.subtitle;
+      var name = document.createElement('div');
+      name.className = 'level-name';
+      name.textContent = lv.name;
+      d.appendChild(name);
+      var dots = document.createElement('div');
+      dots.className = 'dots';
+      lv.puzzles.forEach(function (pz, pi) {
+        var fi = firstIndexOfLevel(li) + pi;
+        var dot = document.createElement('span');
+        if (completed[fi]) { dot.className = 'done'; dot.textContent = '●'; }
+        else if (fi === state.index) { dot.className = 'here'; dot.textContent = '◉'; }
+        else { dot.className = 'todo'; dot.textContent = '○'; }
+        dots.appendChild(dot);
+      });
+      d.appendChild(dots);
+      d.addEventListener('click', function () { loadPuzzle(firstIndexOfLevel(li)); });
+      levelStripEl.appendChild(d);
+    });
+  }
+
   function render() {
     renderSide('left');
     renderSide('right');
     renderBeam();
     renderNotation();
-    counterEl.textContent = 'Puzzle ' + (state.index + 1) + ' of ' + PUZZLES.length;
-    titleEl.textContent = state.puzzle.title;
+    renderLevelStrip();
+    var f = FLAT[state.index];
+    var lv = LEVELS[f.level];
+    counterEl.textContent = 'Puzzle ' + (f.pos + 1) + ' of ' + lv.puzzles.length;
+    titleEl.textContent = lv.subtitle;
     undoBtn.disabled = state.history.length === 0 || state.dialMode;
-    predictBtn.classList.toggle('armed', state.predictArmed);
-    predictBtn.textContent = state.predictArmed ? 'Predicting…' : 'Predict';
-    showBtn.classList.toggle('hidden', !state.frozen);
     hintEl.classList.toggle('hidden', !state.hintShown);
     hintEl.textContent = state.puzzle.hint;
+    var showLevelDone = state.won && isLastOfLevel();
+    levelDoneEl.classList.toggle('hidden', !showLevelDone);
+    if (showLevelDone) {
+      var lastLevel = f.level === LEVELS.length - 1;
+      levelDoneTextEl.textContent = lastLevel ? 'Level done! You finished every level.' : 'Level done!';
+      levelDoneNextBtn.innerHTML = lastLevel ? 'Start over &#9654;' : 'Next &#9654;';
+    }
+    // the dial has its own Next button; hide it when the level-done line already offers one
+    dialNextBtn.classList.toggle('hidden', showLevelDone);
     renderStatus();
   }
 
@@ -236,19 +314,22 @@
     }
     if (state.won) {
       statusEl.classList.add('win');
-      statusEl.textContent = state.puzzle.goal === 'level'
-        ? 'Level! Both sides weigh the same.'
-        : 'The box weighs ' + state.hiddenWeight + '!';
+      if (state.puzzle.goal === 'level') {
+        statusEl.textContent = 'Level! Both sides weigh the same.';
+      } else {
+        var animal = animalFor(state.hiddenWeight);
+        statusEl.textContent = 'The box weighs ' + state.hiddenWeight + '!' +
+          (animal ? ' It was ' + animal.name + '.' : '');
+      }
       return;
     }
-    if (state.frozen) { statusEl.textContent = 'What do you think will happen? Press Show.'; return; }
     statusEl.textContent = '';
   }
 
   // ---------- puzzle loading ----------
   function loadPuzzle(i) {
-    state.index = (i + PUZZLES.length) % PUZZLES.length;
-    state.puzzle = PUZZLES[state.index];
+    state.index = (i + FLAT.length) % FLAT.length;
+    state.puzzle = FLAT[state.index].puzzle;
     state.board = {
       left: state.puzzle.left.map(makePiece),
       right: state.puzzle.right.map(makePiece)
@@ -256,8 +337,7 @@
     state.hiddenWeight = state.puzzle.hiddenWeight;
     state.history = [];
     state.won = false;
-    state.predictArmed = false;
-    state.frozen = false;
+    state.revealed = false;
     state.dialMode = false;
     state.hintShown = false;
     dialEl.classList.add('hidden');
@@ -282,22 +362,21 @@
   }
 
   function afterMove() {
-    if (state.predictArmed) {
-      state.predictArmed = false;
-      state.frozen = true;
-    }
     render();
-    if (!state.frozen) maybeWin();
+    maybeWin();
   }
 
   function maybeWin() {
     if (state.won || state.dialMode) return;
     if (!checkWin()) return;
     state.won = true;
-    render();
+    completed[state.index] = true;
+    render();   // boxes still drawn closed (revealed is false)
     if (state.puzzle.goal === 'isolate') {
-      // open the box after the beam has settled
+      // open the boxes after the beam has settled, so the lid animates and the animal fades in
       setTimeout(function () {
+        if (!state.won) return;   // undone in the meantime
+        state.revealed = true;
         var boxes = svg.querySelectorAll('.piece.box');
         for (var i = 0; i < boxes.length; i++) boxes[i].classList.add('open');
       }, 450);
@@ -325,7 +404,8 @@
     dialValueEl.textContent = state.dialValue;
     render();
   });
-  $('dialNextBtn').addEventListener('click', function () { loadPuzzle(state.index + 1); });
+  dialNextBtn.addEventListener('click', function () { loadPuzzle(state.index + 1); });
+  levelDoneNextBtn.addEventListener('click', function () { loadPuzzle(state.index + 1); });
 
   // ---------- board mutations (with history) ----------
   function pushHistory() { state.history.push(cloneBoard(state.board)); }
@@ -366,11 +446,11 @@
     if (state.history.length === 0 || state.dialMode) return;
     state.board = state.history.pop();
     state.won = false;
-    state.frozen = false;
+    state.revealed = false;
     render();
   }
 
-  // ---------- palette + costumes ----------
+  // ---------- palette ----------
   var paletteEl = $('palette');
   var selectedValue = null;   // click-to-place fallback
   function clearSelection() {
@@ -392,26 +472,6 @@
   palHint.className = 'pal-hint';
   palHint.textContent = 'Drag a weight onto a side. Drag a piece off to remove it. (Or click a weight, then click a side.)';
   paletteEl.appendChild(palHint);
-
-  var costumesEl = $('costumes');
-  COSTUMES.forEach(function (c, i) {
-    var b = document.createElement('button');
-    b.className = 'costume-btn' + (i === state.costume ? ' selected' : '');
-    b.textContent = c.icon;
-    b.title = 'Call the box "' + c.letter + '"';
-    b.addEventListener('click', function () {
-      state.costume = i;
-      var all = costumesEl.querySelectorAll('.costume-btn');
-      for (var k = 0; k < all.length; k++) all[k].classList.toggle('selected', k === i);
-      // re-draw pieces and notation only; the beam angle is unchanged so it will not move
-      render();
-      if (state.won && state.puzzle.goal === 'isolate' && !state.dialMode) {
-        var boxes = svg.querySelectorAll('.piece.box');
-        for (var j = 0; j < boxes.length; j++) boxes[j].classList.add('open');
-      }
-    });
-    costumesEl.appendChild(b);
-  });
 
   // ---------- drag and drop (pointer events) ----------
   var drag = null; // { kind: 'palette'|'piece', value, id, side, startX, startY, moved, ghost, el }
@@ -476,7 +536,7 @@
       ev.preventDefault();
       return;
     }
-    // click-to-place fallback: a palette block is selected and the player clicked a pan
+    // click-to-place fallback: a palette block is selected and the player clicked empty pan space
     if (selectedValue !== null) {
       var side = sideAtPoint(ev.clientX, ev.clientY);
       if (side) { addPiece(side, { type: 'weight', value: selectedValue }); }
@@ -511,8 +571,8 @@
         if (selectedValue === d.value) { clearSelection(); }
         else { clearSelection(); selectedValue = d.value; d.el.classList.add('selected'); }
       } else if (d.kind === 'piece') {
-        if (selectedValue !== null) addPiece(d.side, { type: 'weight', value: selectedValue });
-        else removePieceById(d.id);
+        // clicking a piece on a pan always removes it, whatever is selected in the palette
+        removePieceById(d.id);
       }
       return;
     }
@@ -538,16 +598,6 @@
   $('resetBtn').addEventListener('click', function () { loadPuzzle(state.index); });
   undoBtn.addEventListener('click', undo);
   $('hintBtn').addEventListener('click', function () { state.hintShown = !state.hintShown; render(); });
-  predictBtn.addEventListener('click', function () {
-    if (state.frozen) return;
-    state.predictArmed = !state.predictArmed;
-    render();
-  });
-  showBtn.addEventListener('click', function () {
-    state.frozen = false;
-    render();
-    maybeWin();
-  });
   document.addEventListener('keydown', function (ev) {
     if ((ev.metaKey || ev.ctrlKey) && ev.key === 'z') { ev.preventDefault(); undo(); }
   });
@@ -575,12 +625,21 @@
     }
     return false;
   }
-  PUZZLES.forEach(function (pz, i) {
-    if (pz.stage !== 2) return;
+  function hasBox(arr) { for (var i = 0; i < arr.length; i++) if (arr[i].type === 'box') return true; return false; }
+  FLAT.forEach(function (f) {
+    var pz = f.puzzle;
+    var tag = 'Level ' + (f.level + 1) + ' puzzle ' + (f.pos + 1);
     var l = sideTotal(pz.left.map(function (s) { return { type: s.type, value: s.value || 0 }; }), pz.hiddenWeight);
     var r = sideTotal(pz.right.map(function (s) { return { type: s.type, value: s.value || 0 }; }), pz.hiddenWeight);
-    console.assert(l === r, 'Puzzle ' + (i + 1) + ' does not start level: ' + l + ' vs ' + r);
-    console.assert(solvableByRemoval(pz), 'Puzzle ' + (i + 1) + ' cannot be finished by removing pieces only');
+    if (pz.goal === 'isolate') {
+      console.assert(hasBox(pz.left) || hasBox(pz.right), tag + ' has no box');
+      console.assert(l === r, tag + ' does not start level: ' + l + ' vs ' + r);
+      console.assert(solvableByRemoval(pz), tag + ' cannot be finished by removing pieces only');
+    } else {
+      // "make it level" puzzles: no boxes, and must not already be level (nothing to do)
+      console.assert(!hasBox(pz.left) && !hasBox(pz.right), tag + ' should not contain a box');
+      console.assert(l !== r || pz.left.length === 0 || pz.right.length === 0, tag + ' is already level at the start');
+    }
   });
 
   // ---------- go ----------

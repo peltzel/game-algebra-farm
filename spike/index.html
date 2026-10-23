@@ -10,18 +10,20 @@
 <header id="topbar">
   <div class="left-group">
     <button id="prevBtn" title="Previous puzzle">&#9664;</button>
-    <span id="counter">Puzzle 1 of 11</span>
+    <span id="counter">Puzzle 1 of 5</span>
     <button id="nextBtn" title="Next puzzle">&#9654;</button>
-    <span id="title" class="puzzle-title">Make it level</span>
+    <span id="title" class="puzzle-title">Both sides must weigh the same</span>
   </div>
   <div class="right-group">
     <button id="hintBtn">Hint</button>
-    <button id="predictBtn" title="Freeze the seesaw for the next move">Predict</button>
-    <button id="showBtn" class="hidden accent">Show</button>
     <button id="undoBtn">Undo</button>
     <button id="resetBtn">Reset</button>
   </div>
 </header>
+
+<nav id="levelStrip" class="level-strip">
+  <!-- filled by app.js -->
+</nav>
 
 <div id="hint" class="hidden"></div>
 
@@ -55,6 +57,11 @@
   <div id="status" class="status"></div>
   <div id="notation" class="notation">0 = 0</div>
 
+  <div id="levelDone" class="level-done hidden">
+    <span id="levelDoneText">Level done!</span>
+    <button id="levelDoneNextBtn" class="accent">Next &#9654;</button>
+  </div>
+
   <div id="dial" class="dial hidden">
     <label for="dialRange">What if the box weighed&hellip; <strong id="dialValue">4</strong></label>
     <input id="dialRange" type="range" min="0" max="12" step="1" value="4">
@@ -63,10 +70,6 @@
 </main>
 
 <footer>
-  <div id="costumes" class="costumes">
-    <span class="label">Box costume:</span>
-    <!-- filled by app.js -->
-  </div>
   <div id="palette" class="palette">
     <span class="label">Weights:</span>
     <!-- filled by app.js -->
