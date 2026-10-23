@@ -249,10 +249,12 @@ main {
 
 /* clone machine: the copier bar slides in over the pans and flashes */
 #gantry {
+  visibility: hidden;   /* only shown while a clone is running; parked, its end could peek into the board */
   transform-box: view-box; transform-origin: 0 0;
   transform: translate(-900px, 0);
   transition: transform 320ms ease-in-out;
 }
+#gantry.active { visibility: visible; }
 .gantry .bar { fill: #5d6b7a; stroke: #3f4a55; stroke-width: 2; }
 .gantry .lamp { fill: #ffd666; stroke: #3f4a55; stroke-width: 1.5; }
 @keyframes lamp-flash { 50% { fill: #ffffff; } }

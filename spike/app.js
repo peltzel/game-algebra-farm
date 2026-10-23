@@ -734,12 +734,15 @@
     for (var mi = 0; mi < machineBtns.length; mi++) machineBtns[mi].disabled = state.won || state.dialMode || state.busy;
     hintEl.classList.toggle('hidden', !state.hintShown);
     hintEl.textContent = state.puzzle.hint;
-    var showLevelDone = state.won && isLastOfLevel();
+    // the Next line shows after the last puzzle of a level, and after any "make it level" win
+    // (those puzzles have no slider, so without this there is no Next below the seesaw)
+    var lastOfLevel = isLastOfLevel();
+    var showLevelDone = state.won && (lastOfLevel || state.puzzle.goal === 'level');
     levelDoneEl.classList.toggle('hidden', !showLevelDone);
     if (showLevelDone) {
       var lastLevel = f.level === LEVELS.length - 1;
-      levelDoneTextEl.textContent = lastLevel ? 'Level done! You finished every level.' : 'Level done!';
-      levelDoneNextBtn.innerHTML = lastLevel ? 'Start over &#9654;' : 'Next &#9654;';
+      levelDoneTextEl.textContent = !lastOfLevel ? '' : lastLevel ? 'Level done! You finished every level.' : 'Level done!';
+      levelDoneNextBtn.innerHTML = (lastOfLevel && lastLevel) ? 'Start over &#9654;' : 'Next puzzle &#9654;';
     }
     // the dial has its own Next button; hide it when the level-done line already offers one,
     // and in "any weight" mode, where the slider comes with an Undo instead
@@ -998,6 +1001,7 @@
       panEls[sides[k]].classList.remove('animating');
     }
     gantryEl.classList.remove('flash');
+    gantryEl.classList.remove('active');
     gantryEl.style.transition = 'none';   // park the copier off-screen without sliding there
     gantryEl.style.transform = '';
     svg.classList.remove('shake');
@@ -1288,6 +1292,7 @@
       plan[s] = { items: lay.map(function (e) { return spawn(s, e); }), len: lay.length, finalLay: layoutSide(cloned[s], s) };
     });
     // the copier slides in from the left
+    gantryEl.classList.add('active');
     gantryEl.style.transition = 'none';
     gantryEl.style.transform = 'translate(-900px, 0px)';
     gantryEl.getBoundingClientRect();
