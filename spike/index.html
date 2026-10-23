@@ -18,6 +18,7 @@
     <button id="hintBtn">Hint</button>
     <button id="undoBtn">Undo</button>
     <button id="resetBtn">Reset</button>
+    <button id="farmShowBtn" class="small hidden" title="Bring the farm column back">Show farm (0)</button>
   </div>
 </header>
 
@@ -43,15 +44,27 @@
         <rect class="dropzone" x="20" y="40" width="340" height="200" data-side="left"></rect>
         <line x1="190" y1="272" x2="190" y2="238" class="post"></line>
         <rect x="30" y="226" width="320" height="12" rx="6" class="pan-plate" data-side="left"></rect>
+        <g class="trays"></g>
         <g class="pieces"></g>
+        <g class="anim"></g>
       </g>
 
       <g id="pan-right" class="pan" data-side="right">
         <rect class="dropzone" x="540" y="40" width="340" height="200" data-side="right"></rect>
         <line x1="710" y1="272" x2="710" y2="238" class="post"></line>
         <rect x="550" y="226" width="320" height="12" rx="6" class="pan-plate" data-side="right"></rect>
+        <g class="trays"></g>
         <g class="pieces"></g>
+        <g class="anim"></g>
       </g>
+    </g>
+
+    <!-- clone machine: a copier bar that slides in above both pans (parked off-screen until used) -->
+    <g id="gantry" class="gantry">
+      <rect class="bar" x="40" y="4" width="820" height="16" rx="8"></rect>
+      <circle class="lamp" cx="190" cy="12" r="6"></circle>
+      <circle class="lamp" cx="450" cy="12" r="6"></circle>
+      <circle class="lamp" cx="710" cy="12" r="6"></circle>
     </g>
   </svg>
 
@@ -61,10 +74,22 @@
   <!-- level 4 only: machines that act on both sides at once -->
   <div id="machines" class="machines hidden">
     <span class="label">Machines:</span>
-    <button id="clone2Btn" class="machine" data-machine="clone" data-n="2">Clone &times;2</button>
-    <button id="clone3Btn" class="machine" data-machine="clone" data-n="3">Clone &times;3</button>
-    <button id="share2Btn" class="machine" data-machine="share" data-n="2">Share by 2</button>
-    <button id="share3Btn" class="machine" data-machine="share" data-n="3">Share by 3</button>
+    <button id="clone2Btn" class="machine" data-machine="clone" data-n="2">
+      <svg class="glyph" viewBox="0 0 56 20" aria-hidden="true"><rect x="2" y="4" width="12" height="12" rx="2"/><path d="M17 10h7m-3-3 3 3-3 3"/><rect x="27" y="4" width="12" height="12" rx="2"/><rect x="42" y="4" width="12" height="12" rx="2"/></svg>
+      <span>Clone &times;2</span>
+    </button>
+    <button id="clone3Btn" class="machine" data-machine="clone" data-n="3">
+      <svg class="glyph" viewBox="0 0 71 20" aria-hidden="true"><rect x="2" y="4" width="12" height="12" rx="2"/><path d="M17 10h7m-3-3 3 3-3 3"/><rect x="27" y="4" width="12" height="12" rx="2"/><rect x="42" y="4" width="12" height="12" rx="2"/><rect x="57" y="4" width="12" height="12" rx="2"/></svg>
+      <span>Clone &times;3</span>
+    </button>
+    <button id="share2Btn" class="machine" data-machine="share" data-n="2">
+      <svg class="glyph" viewBox="0 0 40 22" aria-hidden="true"><rect x="7" y="1" width="6" height="6" rx="1"/><rect x="17" y="1" width="6" height="6" rx="1"/><rect x="27" y="1" width="6" height="6" rx="1"/><path d="M3 12v8h14v-8"/><path d="M23 12v8h14v-8"/></svg>
+      <span>Share by 2</span>
+    </button>
+    <button id="share3Btn" class="machine" data-machine="share" data-n="3">
+      <svg class="glyph" viewBox="0 0 40 22" aria-hidden="true"><rect x="7" y="1" width="6" height="6" rx="1"/><rect x="17" y="1" width="6" height="6" rx="1"/><rect x="27" y="1" width="6" height="6" rx="1"/><path d="M1 12v8h10v-8"/><path d="M15 12v8h10v-8"/><path d="M29 12v8h10v-8"/></svg>
+      <span>Share by 3</span>
+    </button>
     <span id="machineMsg" class="machine-msg"></span>
   </div>
 
@@ -77,6 +102,7 @@
     <label for="dialRange">What if the box weighed&hellip; <strong id="dialValue">4</strong></label>
     <input id="dialRange" type="range" min="0" max="12" step="1" value="4">
     <button id="dialNextBtn" class="accent">Next puzzle &#9654;</button>
+    <button id="dialUndoBtn" class="hidden" title="Undo the last move">Undo</button>
   </div>
 </div>
 
@@ -84,7 +110,10 @@
   <div class="farm-head">
     <div>
       <div class="farm-title">Your farm</div>
-      <div id="farmCount" class="farm-count">0 animals</div>
+      <div class="farm-count-row">
+        <span id="farmCount" class="farm-count">0 animals</span>
+        <button id="farmHideBtn" class="small" title="Tuck the farm away so the seesaw gets the whole width">Hide farm</button>
+      </div>
     </div>
     <button id="farmResetBtn" class="linkish" title="Send every animal away and start again">Reset farm</button>
   </div>

@@ -142,6 +142,16 @@ The cloner in reverse, modelled on Montessori sharing. Pick n. Each side gets
 n empty trays. Everything is dealt out one piece at a time. Keep one tray per
 side; the rest vanish. If it was level before, it is level after.
 
+The kid has to watch it happen (Ben, 2026-10-23: the first version that
+just swapped the pieces was "not visual enough, not intuitive enough").
+The choreography: trays appear under each pan; the known weights slide
+together into one block; that block is cut into n equal blocks; pieces drop
+one at a time into the trays round-robin so every tray visibly gets the
+same thing; then all trays but one shrink away and the kept one's contents
+rise back onto the pan. Cloning likewise shows a copier bar over both pans
+and copies sliding out of the originals. The animation is the explanation;
+the result alone teaches nothing.
+
 - Clean case: three boxes against 12 lb, split by 3, gives one box against
   4 lb. `3x + 6 = 15` split by 3 gives one box and 2 lb against 5 lb.
 - Strained case, on purpose: `3x + 5 = 11` split by 3. The boxes deal out,
@@ -176,6 +186,19 @@ The dial is also how the kid checks an answer: after reading "the box weighs
 4," the original puzzle comes back and they set the dial to 4. It stays level.
 That is substitution, and it is the habit that makes homework
 self-correcting.
+
+### 4.7a The always-level board (an identity, never named as such)
+
+A kid can remove pieces until both sides hold the same number of boxes and
+the seesaw is level: `x = x`, `2x + 3 = 2x + 3`, or empty pans. The seesaw
+can no longer reveal the box. This is not prevented (tipping and dead ends
+are information) and it is not a failure. The game says, positively:
+"Level at every weight! Both sides are the same thing, so the box could
+weigh anything," offers the dial so the kid can see it stay level at every
+setting, and points them to Undo. This is the identity row of the dial
+table delivered at the moment it matters, in the kid's own moves. It never
+counts as a win and never earns an animal. (Ben, 2026-10-23: option (b),
+with the wording kept positive.)
 
 ### 4.8 The costume swap (what the letter is called)
 
@@ -260,7 +283,11 @@ do the next puzzle that is not "because it is good for you." Decision (Ben,
 - Each new animal gets a randomly rolled colour variant with a rarity:
   common (natural), uncommon (golden), rare (blue), legendary (rainbow).
   The reveal says what you got, and makes a fuss for rare and legendary.
-- The animals wander around the farm.
+- The animals wander around the farm. Their size is clearly proportional
+  to the weight they came from: a mouse from a 1 is tiny, an elephant from
+  a 10 is big (Ben, 2026-10-23).
+- The farm can be hidden and shown; the choice is remembered. Animals are
+  still earned while it is hidden.
 - The farm persists between sessions on the tutor's laptop (per kid, once
   per-kid names exist).
 

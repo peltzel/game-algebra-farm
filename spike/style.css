@@ -152,6 +152,9 @@ main {
   color: #8a2be2;
   animation: hue-spin 3s linear infinite;
 }
+/* "level at every weight": both sides are the same thing, so the box could weigh anything */
+.status.any { color: #6a4fb3; }
+.status .sub { font-size: 16px; font-weight: 600; color: #777; margin-top: 2px; }
 
 /* ---------- colour variants (shared by the box reveal and the farm) ---------- */
 .tint-uncommon { filter: sepia(1) saturate(3) hue-rotate(-12deg); }
@@ -188,7 +191,16 @@ main {
   border-radius: 12px;
 }
 .machines .label { margin-right: 2px; }
-.machines button.machine { font-size: 15px; padding: 5px 11px; border-radius: 9px; }
+.machines button.machine {
+  display: inline-flex; align-items: center; gap: 7px;
+  font-size: 15px; padding: 5px 11px; border-radius: 9px;
+}
+/* tiny pictures inside the machine buttons: one square becoming many; squares dropping into trays */
+.machines .glyph { height: 15px; width: auto; display: block; }
+.machines .glyph rect { fill: currentColor; }
+.machines .glyph path { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.machines button.machine[data-machine=clone] .glyph { color: #2f6db5; }
+.machines button.machine[data-machine=share] .glyph { color: #b85a1f; }
 .machines button.machine[data-machine=clone] { background: #e6f0fa; border-color: #a9cdf6; }
 .machines button.machine[data-machine=clone]:hover:not(:disabled) { background: #d4e6f8; }
 .machines button.machine[data-machine=share] { background: #fdeee3; border-color: #f3c4a3; }
@@ -200,13 +212,53 @@ main {
 /* a touch less board when the machine row is on screen, so the dial still fits at 1280x800 */
 #play.with-machines #board { max-height: 44vh; }
 
-/* machine animations: cloned pieces fade in, shared-away pieces fade out */
+/* machine animations: pieces that appear on the redraw (a merged box) fade in */
 @keyframes piece-in {
   from { opacity: 0; }
   to   { opacity: 1; }
 }
 .piece.fresh { animation: piece-in 380ms ease-out; }
-.piece.vanish { opacity: 0; transition: opacity 260ms ease; }
+
+/* while a machine runs, the real pieces hide and animated copies move in the .anim layer */
+.pan.animating .pieces { visibility: hidden; }
+.anim { pointer-events: none; }
+.anim .piece, .trays .tray, .anim .cut-line { transform-box: view-box; transform-origin: 0 0; }
+.anim .piece { cursor: default; }
+
+/* share trays under the pan */
+.tray rect { fill: #fbf6ea; stroke: #b9b0a0; stroke-width: 2.5; }
+.tray text { fill: #b9b0a0; font-size: 15px; font-weight: 700; }
+.anim .cut-line { stroke: #ffffff; stroke-width: 3; stroke-linecap: round; filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.5)); }
+
+/* a piece with nowhere fair to go wobbles in the air before everything bounces back */
+@keyframes piece-stuck {
+  0%, 100% { transform: translate(0, -26px) rotate(0deg); }
+  25%      { transform: translate(-5px, -26px) rotate(-7deg); }
+  75%      { transform: translate(5px, -26px) rotate(7deg); }
+}
+.anim .piece.stuck { animation: piece-stuck 180ms ease-in-out 2; }
+
+/* the whole seesaw gives a gentle shake when a share will not come out even */
+#board { transform-origin: 50% 100%; }
+@keyframes board-shake {
+  0%, 100% { transform: rotate(0deg); }
+  25%      { transform: rotate(-1.2deg); }
+  75%      { transform: rotate(1.2deg); }
+}
+#board.shake { animation: board-shake 420ms ease-in-out; }
+
+/* clone machine: the copier bar slides in over the pans and flashes */
+#gantry {
+  transform-box: view-box; transform-origin: 0 0;
+  transform: translate(-900px, 0);
+  transition: transform 320ms ease-in-out;
+}
+.gantry .bar { fill: #5d6b7a; stroke: #3f4a55; stroke-width: 2; }
+.gantry .lamp { fill: #ffd666; stroke: #3f4a55; stroke-width: 1.5; }
+@keyframes lamp-flash { 50% { fill: #ffffff; } }
+@keyframes bar-flash { 50% { fill: #a9c4de; } }
+.gantry.flash .lamp { animation: lamp-flash 260ms ease-in-out 2; }
+.gantry.flash .bar { animation: bar-flash 260ms ease-in-out 2; }
 
 /* half a box: half the width, with a dashed cut edge */
 .piece.box.half .cut { stroke: #b85a1f; stroke-width: 3; stroke-dasharray: 5 4; }
@@ -250,10 +302,14 @@ main {
   margin-bottom: 6px;
 }
 .farm-title { font-size: 20px; font-weight: 700; color: #3b5b7a; }
-.farm-count { font-size: 15px; color: #777; font-weight: 600; }
+.farm-count-row { display: flex; align-items: center; gap: 6px; }
+.farm-count { font-size: 15px; color: #777; font-weight: 600; white-space: nowrap; }
+/* small buttons: "Hide farm" in the farm header, "Show farm (n)" in the top bar */
+button.small { font-size: 13px; font-weight: 600; padding: 2px 7px; border-radius: 8px; white-space: nowrap; }
 button.linkish {
   font-size: 13px; font-weight: 600;
-  padding: 2px 4px;
+  padding: 2px 0 2px 4px;
+  white-space: nowrap;
   border: none; background: none;
   color: #999;
   text-decoration: underline;
@@ -264,7 +320,7 @@ button.linkish:hover { color: #3b5b7a; background: none; }
 .farm-ground {
   flex: 1 1 auto;
   position: relative;
-  min-height: 120px;
+  min-height: 180px;   /* tall enough for an elephant (a 90px badge) to stand on the grass */
   overflow: hidden;
   border-radius: 10px;
   border: 2px solid #b9d9a8;

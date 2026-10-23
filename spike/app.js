@@ -33,6 +33,13 @@
     if (weight < 1) return null;
     return ANIMALS[Math.min(weight, 10)];
   }
+  // animal sizes grow roughly in a straight line with the weight: 1 is tiny, 10 and up is big
+  var FARM_MIN_PX = 14, FARM_MAX_PX = 60;       // emoji font size on the farm
+  var REVEAL_MIN_PX = 16, REVEAL_MAX_PX = 70;   // in the box reveal (SVG units)
+  function animalPx(weight, lo, hi) {
+    var w = Math.max(1, Math.min(weight, 10));
+    return Math.round(lo + (w - 1) * (hi - lo) / 9);
+  }
 
   // ---------- flat puzzle list built from LEVELS ----------
   // FLAT[i] = { level: levelIndex, pos: positionWithinLevel, puzzle }
@@ -55,6 +62,8 @@
     revealed: false,   // boxes have been opened after a win
     dialMode: false,
     dialValue: 0,
+    anyMode: false,    // "level at every weight": same boxes and same known total on both sides
+    busy: false,       // a machine animation is running: every input is off
     hintShown: false,
     variant: null,     // colour variant of this puzzle's animal (from the farm), or null if not yet won
     newAnimal: false   // this win added an animal to the farm
@@ -79,6 +88,7 @@
   var dialRange = $('dialRange');
   var dialValueEl = $('dialValue');
   var dialNextBtn = $('dialNextBtn');
+  var dialUndoBtn = $('dialUndoBtn');
   var undoBtn = $('undoBtn');
   var levelStripEl = $('levelStrip');
   var levelDoneEl = $('levelDone');
@@ -88,6 +98,9 @@
   var machinesEl = $('machines');
   var machineMsgEl = $('machineMsg');
   var machineBtns = machinesEl.querySelectorAll('button.machine');
+  var gantryEl = $('gantry');
+  var trayLayers = { left: panEls.left.querySelector('.trays'), right: panEls.right.querySelector('.trays') };
+  var animLayers = { left: panEls.left.querySelector('.anim'), right: panEls.right.querySelector('.anim') };
 
   var SVG_NS = 'http://www.w3.org/2000/svg';
   function svgEl(name, attrs) {
@@ -173,6 +186,29 @@
   // ---------- farm: rendering and wandering ----------
   var farmGround = $('farmGround');
   var farmCountEl = $('farmCount');
+  var farmEl = $('farm');
+  var farmHideBtn = $('farmHideBtn');
+  var farmShowBtn = $('farmShowBtn');
+
+  // the farm column can be tucked away; the choice survives a reload
+  var FARM_HIDDEN_KEY = 'seesaw-farm-hidden';
+  var farmHidden = false;
+  try { farmHidden = window.localStorage.getItem(FARM_HIDDEN_KEY) === '1'; } catch (e) { farmHidden = false; }
+  var farmNeedsRender = false;   // the farm was (re)drawn while hidden: re-place the animals on show
+  function saveFarmHidden() {
+    try { window.localStorage.setItem(FARM_HIDDEN_KEY, farmHidden ? '1' : '0'); } catch (e) { /* ignore */ }
+  }
+  function updateFarmCount() {
+    var n = farm.animals.length;
+    farmCountEl.textContent = n + (n === 1 ? ' animal' : ' animals');
+    farmShowBtn.textContent = 'Show farm (' + n + ')';
+  }
+  // show or hide the column; called once at start-up (before the first draw) and on each click
+  function applyFarmHidden() {
+    farmEl.classList.toggle('hidden', farmHidden);
+    farmShowBtn.classList.toggle('hidden', !farmHidden);
+  }
+  applyFarmHidden();
   var reducedMotion = false;
   try {
     reducedMotion = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
@@ -185,15 +221,15 @@
   function renderFarm() {
     while (farmGround.firstChild) farmGround.removeChild(farmGround.firstChild);
     critters = [];
-    var n = farm.animals.length;
-    farmCountEl.textContent = n + (n === 1 ? ' animal' : ' animals');
+    updateFarmCount();
+    farmNeedsRender = farmHidden;   // widths are unknown while hidden; redraw when shown
     var shown = farm.animals.slice(0, FARM_MAX_SHOWN);
     for (var i = 0; i < shown.length; i++) {
       var a = shown[i];
       var animal = animalFor(a.weight);
       if (!animal) continue;
       var variant = variantById(a.variant);
-      var size = 20 + Math.min(a.weight, 10) * 1.6;      // 22 .. 36 px: bigger animals are bigger
+      var size = animalPx(a.weight, FARM_MIN_PX, FARM_MAX_PX);   // 14 .. 60 px: a mouse is tiny, an elephant is big
       var el = document.createElement('div');
       el.className = 'farm-animal ' + variant.id;
       el.title = animalLabel(animal, variant);
@@ -210,6 +246,7 @@
         var star = document.createElement('span');
         star.className = 'star';
         star.textContent = '★';
+        star.style.fontSize = Math.max(11, Math.round(size * 0.4)) + 'px';
         badge.appendChild(star);
       }
       el.appendChild(badge);
@@ -224,12 +261,12 @@
         facingRight: Math.random() < 0.5
       };
       c.target = c.x;
-      // spread them across the grass band (the bottom half of the ground); the ones
-      // nearer the bottom edge draw on top, as if closer to the viewer
+      // spread them across the grass band (the bottom half of the ground); bigger animals
+      // draw in front, and among equals the one nearer the bottom edge wins
       var grassH = (farmGround.clientHeight || 200) * GRASS_SHARE;
       var bottom = 6 + Math.random() * Math.max(0, grassH - w - 10);
       el.style.bottom = Math.round(bottom) + 'px';
-      el.style.zIndex = String(500 - Math.round(bottom));
+      el.style.zIndex = String(100 + Math.min(a.weight, 10) * 10 + (9 - Math.min(9, Math.floor(bottom / 10))));
       placeCritter(c);
       farmGround.appendChild(el);
       critters.push(c);
@@ -266,9 +303,36 @@
 
   function startWandering() {
     if (wanderTimer !== null) { clearInterval(wanderTimer); wanderTimer = null; }
-    if (reducedMotion || critters.length === 0) return;
+    if (reducedMotion || farmHidden || critters.length === 0) return;
     wanderTimer = setInterval(wanderStep, 60);
   }
+  function stopWandering() {
+    if (wanderTimer !== null) { clearInterval(wanderTimer); wanderTimer = null; }
+  }
+  // keep every animal inside the ground after its width changed (resize, or the column coming back)
+  function reclampCritters() {
+    var gw = groundWidth();
+    for (var i = 0; i < critters.length; i++) {
+      var c = critters[i];
+      c.x = Math.min(c.x, Math.max(0, gw - c.w));
+      c.target = Math.min(c.target, Math.max(0, gw - c.w));
+      placeCritter(c);
+    }
+  }
+
+  farmHideBtn.addEventListener('click', function () {
+    farmHidden = true;
+    saveFarmHidden();
+    applyFarmHidden();
+    stopWandering();
+  });
+  farmShowBtn.addEventListener('click', function () {
+    farmHidden = false;
+    saveFarmHidden();
+    applyFarmHidden();
+    if (farmNeedsRender) { renderFarm(); }     // animals earned while hidden get real positions
+    else { reclampCritters(); startWandering(); }
+  });
 
   $('farmResetBtn').addEventListener('click', function () {
     if (farm.animals.length === 0) return;
@@ -311,6 +375,14 @@
     }
     return out;
   }
+  // What the shared-out known total becomes: one block when it is a single small number
+  // (8 shared by 2 -> one "4"), otherwise the greedy chunks (24 shared by 2 -> 10, 2).
+  function shareChunks(known, n) {
+    var each = known / n;
+    if (each <= 0) return [];
+    if (each <= 10 && each % 1 === 0) return [each];
+    return chunkWeight(each);
+  }
   // Pieces made here carry no id; the game hands out ids (and a fade-in) afterwards.
   function newBox(frac) { return frac === 1 ? { type: 'box', fraction: 1 } : { type: 'box', fraction: frac }; }
   function newWeight(v) { return { type: 'weight', value: v }; }
@@ -348,7 +420,7 @@
     for (var i = 0; i < pieces.length && keepBoxes > 0; i++) {
       if (pieces[i].type === 'box' && pieceFrac(pieces[i]) === 1) { out.push(pieces[i]); keepBoxes--; }
     }
-    var chunks = chunkWeight(sideKnown(pieces) / n);
+    var chunks = shareChunks(sideKnown(pieces), n);
     for (var j = 0; j < chunks.length; j++) out.push(newWeight(chunks[j]));
     return out;
   }
@@ -448,8 +520,9 @@
   function normalizeBoard() {
     state.board = assignIds(mergeBoard(state.board));
   }
+  function sliderDrives() { return state.dialMode || state.anyMode; }
   function effectiveHidden() {
-    return state.dialMode ? state.dialValue : state.hiddenWeight;
+    return sliderDrives() ? state.dialValue : state.hiddenWeight;
   }
   function totals() {
     var h = effectiveHidden();
@@ -504,7 +577,7 @@
   function renderNotation() {
     var t = totals();
     var level = t.left === t.right;
-    var sub = state.dialMode ? state.dialValue : null;
+    var sub = sliderDrives() ? state.dialValue : null;
     var l = formatSide(state.board.left, LETTER, sub);
     var r = formatSide(state.board.right, LETTER, sub);
     if (state.won && state.puzzle.goal === 'isolate' && !state.dialMode) {
@@ -555,7 +628,7 @@
       g.appendChild(svgEl('line', { 'class': 'cut', x1: x + bw, y1: bodyTop + 2, x2: x + bw, y2: bodyTop + bodyH - 2 }));
     }
     var mark = svgEl('text', { 'class': 'mark', x: cx, y: cy, 'font-size': half ? 22 : 32 });
-    mark.textContent = state.dialMode ? fmtNum(state.dialValue * frac) : '?';
+    mark.textContent = sliderDrives() ? fmtNum(state.dialValue * frac) : '?';
     g.appendChild(mark);
 
     // reveal: an animal sized to the weight climbs out of the box, number stays inside
@@ -564,7 +637,7 @@
     var w = state.hiddenWeight * frac;
     var animal = half ? null : animalFor(w);
     if (animal) {
-      var size = 30 + Math.min(w, 10) * 4;   // 34 .. 70 SVG px (an elephant is about box-sized)
+      var size = animalPx(w, REVEAL_MIN_PX, REVEAL_MAX_PX);   // 16 .. 70 SVG units: a mouse is tiny, an elephant is box-sized
       // same tint as the animal that walks onto the farm
       var a = svgEl('text', { 'class': 'animal ' + tintClass(state.variant), x: cx, y: y - size / 2 + 6, 'font-size': size });
       a.textContent = animal.emoji;
@@ -580,30 +653,36 @@
     return g;
   }
 
-  function renderSide(side) {
-    var layer = pieceLayers[side];
-    while (layer.firstChild) layer.removeChild(layer.firstChild);
-    var pieces = state.board[side];
-    var open = boxesOpen();
-    var rows = [];
+  // where each piece of a side sits: [{ p, x, y, w, h }] (top-left corner and size, SVG units)
+  function layoutSide(pieces, side) {
+    var out = [], rows = [];
     for (var i = 0; i < pieces.length; i += PER_ROW) rows.push(pieces.slice(i, i + PER_ROW));
     for (var r = 0; r < rows.length; r++) {
-      var row = rows[r];
-      var totalW = 0;
+      var row = rows[r], totalW = 0;
       for (var k = 0; k < row.length; k++) totalW += pieceSize(row[k]).w;
       totalW += GAP * (row.length - 1);
       var x = PAN_X[side] - totalW / 2;
       var bottom = PAN_TOP - r * ROW_H;
       for (var j = 0; j < row.length; j++) {
-        var p = row[j];
-        var s = pieceSize(p);
-        var y = bottom - s.h;
-        var el = p.type === 'box' ? drawBox(p, x, y, open) : drawWeight(p, x, y);
-        el.setAttribute('data-side', side);
-        if (freshIds[p.id]) el.classList.add('fresh');   // just came out of a machine: fade in
-        layer.appendChild(el);
+        var s = pieceSize(row[j]);
+        out.push({ p: row[j], x: x, y: bottom - s.h, w: s.w, h: s.h });
         x += s.w + GAP;
       }
+    }
+    return out;
+  }
+
+  function renderSide(side) {
+    var layer = pieceLayers[side];
+    while (layer.firstChild) layer.removeChild(layer.firstChild);
+    var open = boxesOpen();
+    var lay = layoutSide(state.board[side], side);
+    for (var i = 0; i < lay.length; i++) {
+      var e = lay[i];
+      var el = e.p.type === 'box' ? drawBox(e.p, e.x, e.y, open) : drawWeight(e.p, e.x, e.y);
+      el.setAttribute('data-side', side);
+      if (freshIds[e.p.id]) el.classList.add('fresh');   // just came out of a machine: fade in
+      layer.appendChild(el);
     }
   }
 
@@ -636,6 +715,7 @@
   }
 
   function render() {
+    updateAnyMode();
     renderSide('left');
     renderSide('right');
     freshIds = {};   // the fade-in happens once, on the first draw after a machine
@@ -646,12 +726,12 @@
     var lv = LEVELS[f.level];
     counterEl.textContent = 'Puzzle ' + (f.pos + 1) + ' of ' + lv.puzzles.length;
     titleEl.textContent = lv.subtitle;
-    undoBtn.disabled = state.history.length === 0 || state.dialMode;
+    undoBtn.disabled = state.history.length === 0 || state.dialMode || state.busy;
     // machine row: only on levels that have machines; greyed while a win or the dial is showing
     var showMachines = !!lv.machines;
     machinesEl.classList.toggle('hidden', !showMachines);
     playEl.classList.toggle('with-machines', showMachines);
-    for (var mi = 0; mi < machineBtns.length; mi++) machineBtns[mi].disabled = state.won || state.dialMode;
+    for (var mi = 0; mi < machineBtns.length; mi++) machineBtns[mi].disabled = state.won || state.dialMode || state.busy;
     hintEl.classList.toggle('hidden', !state.hintShown);
     hintEl.textContent = state.puzzle.hint;
     var showLevelDone = state.won && isLastOfLevel();
@@ -661,13 +741,26 @@
       levelDoneTextEl.textContent = lastLevel ? 'Level done! You finished every level.' : 'Level done!';
       levelDoneNextBtn.innerHTML = lastLevel ? 'Start over &#9654;' : 'Next &#9654;';
     }
-    // the dial has its own Next button; hide it when the level-done line already offers one
-    dialNextBtn.classList.toggle('hidden', showLevelDone);
+    // the dial has its own Next button; hide it when the level-done line already offers one,
+    // and in "any weight" mode, where the slider comes with an Undo instead
+    dialNextBtn.classList.toggle('hidden', showLevelDone || state.anyMode);
+    dialUndoBtn.classList.toggle('hidden', !state.anyMode);
+    dialUndoBtn.disabled = state.history.length === 0;
     renderStatus();
   }
 
   function renderStatus() {
     statusEl.classList.remove('win');
+    statusEl.classList.remove('any');
+    if (state.anyMode) {
+      statusEl.classList.add('any');
+      statusEl.textContent = 'Level at every weight! Both sides are the same thing, so the box could weigh anything.';
+      var sub = document.createElement('div');
+      sub.className = 'sub';
+      sub.textContent = 'Try the slider to see it, then Undo to go back and find its real weight.';
+      statusEl.appendChild(sub);
+      return;
+    }
     if (state.dialMode) {
       var t = totals();
       statusEl.textContent = t.left === t.right
@@ -711,11 +804,12 @@
     state.won = false;
     state.revealed = false;
     state.dialMode = false;
+    state.anyMode = false;
     state.hintShown = false;
     var earned = farmAnimalFor(state.index);
     state.variant = earned ? variantById(earned.variant) : null;
     state.newAnimal = false;
-    dialEl.classList.add('hidden');
+    cancelAnimation();   // a machine mid-run stops here
     clearSelection();
     clearMachineMsg();
     normalizeBoard();
@@ -735,6 +829,27 @@
     normalizeBoard();
     render();
     maybeWin();
+  }
+
+  // ---------- "level at every weight" ----------
+  // Same number of boxes (a half-box counts a half) and the same known total on both sides:
+  // x = x, 2x + 3 = 2x + 3, or 0 = 0. The seesaw cannot tell the box's weight any more.
+  function isAlwaysLevel() {
+    if (!state.puzzle || state.puzzle.goal !== 'isolate') return false;
+    var b = state.board;
+    return sideBoxes(b.left) === sideBoxes(b.right) && sideKnown(b.left) === sideKnown(b.right);
+  }
+  // runs at the top of every render: turns the mode on or off and shows or hides the slider
+  function updateAnyMode() {
+    var on = !state.won && !state.dialMode && !state.busy && isAlwaysLevel();
+    if (on && !state.anyMode) {
+      // start the slider somewhere that is not the real weight, so nothing is given away
+      state.dialValue = state.hiddenWeight === 6 ? 5 : 6;
+      dialRange.value = state.dialValue;
+      dialValueEl.textContent = state.dialValue;
+    }
+    state.anyMode = on;
+    dialEl.classList.toggle('hidden', !(state.dialMode || state.anyMode));
   }
 
   function maybeWin() {
@@ -774,8 +889,7 @@
     normalizeBoard();
     dialRange.value = state.dialValue;
     dialValueEl.textContent = state.dialValue;
-    dialEl.classList.remove('hidden');
-    render();
+    render();   // shows the dial
   }
   dialRange.addEventListener('input', function () {
     state.dialValue = parseInt(dialRange.value, 10);
@@ -783,19 +897,20 @@
     render();
   });
   dialNextBtn.addEventListener('click', function () { loadPuzzle(state.index + 1); });
+  dialUndoBtn.addEventListener('click', function () { undo(); });
   levelDoneNextBtn.addEventListener('click', function () { loadPuzzle(state.index + 1); });
 
   // ---------- board mutations (with history) ----------
   function pushHistory() { state.history.push(cloneBoard(state.board)); }
 
   function addPiece(side, spec) {
-    if (state.dialMode) return;
+    if (state.dialMode || state.busy) return;
     pushHistory();
     state.board[side].push(makePiece(spec));
     afterMove();
   }
   function removePieceById(id) {
-    if (state.dialMode) return;
+    if (state.dialMode || state.busy) return;
     var loc = findPiece(id);
     if (!loc) return;
     pushHistory();
@@ -803,7 +918,7 @@
     afterMove();
   }
   function movePiece(id, toSide) {
-    if (state.dialMode) return;
+    if (state.dialMode || state.busy) return;
     var loc = findPiece(id);
     if (!loc || loc.side === toSide) return;
     pushHistory();
@@ -821,7 +936,7 @@
   }
 
   function undo() {
-    if (state.history.length === 0 || state.dialMode) return;
+    if (state.history.length === 0 || state.dialMode || state.busy) return;
     state.board = state.history.pop();
     state.won = false;
     state.revealed = false;
@@ -832,7 +947,6 @@
   // ---------- machines (level 4): clone and share, always both sides at once ----------
   var MACHINE_MSG_MS = 3200;
   var machineMsgTimer = null;
-  var shareTimer = null;
   function clearMachineMsg() {
     if (machineMsgTimer !== null) { clearTimeout(machineMsgTimer); machineMsgTimer = null; }
     machineMsgEl.textContent = '';
@@ -843,40 +957,370 @@
     machineMsgTimer = setTimeout(clearMachineMsg, MACHINE_MSG_MS);
   }
   function machinesActive() {
-    return !!currentLevel().machines && !state.won && !state.dialMode;
+    return !!currentLevel().machines && !state.won && !state.dialMode && !state.busy;
   }
   function machineClone(n) {
     if (!machinesActive()) return;
     clearMachineMsg();
     pushHistory();
-    state.board = cloneBoardTimes(state.board, n);
-    afterMove();   // merges half-boxes, hands out ids (the copies fade in), checks for a win
+    animateClone(n, cloneBoardTimes(state.board, n));
   }
   function machineShare(n) {
     if (!machinesActive()) return;
-    if (!canShareBoard(state.board, n)) {
-      showMachineMsg("That won't share evenly. Try taking something off first.");
-      return;
-    }
     clearMachineMsg();
+    if (!canShareBoard(state.board, n)) { animateShareRefusal(n); return; }
     pushHistory();
-    var next = shareBoard(state.board, n);
-    // pieces that are not kept fade out first; the board redraws once they are gone
-    var kept = {};
-    for (var i = 0; i < next.left.length; i++) if (next.left[i].id !== undefined) kept[next.left[i].id] = true;
-    for (var j = 0; j < next.right.length; j++) if (next.right[j].id !== undefined) kept[next.right[j].id] = true;
-    var els = svg.querySelectorAll('.piece');
-    for (var k = 0; k < els.length; k++) {
-      if (!kept[parseInt(els[k].getAttribute('data-id'), 10)]) els[k].classList.add('vanish');
+    animateShare(n, shareBoard(state.board, n));
+  }
+
+  // ---------- machine animations ----------
+  // Every animation draws its own copies of the pieces into the pan's .anim layer (the
+  // real .pieces layer hides meanwhile), moves them with CSS transitions on transform and
+  // opacity driven by timeouts, and only at the end changes state.board and redraws.
+  // While one runs state.busy is true and every input is off; loading a puzzle cancels it.
+  var animTimers = [];
+  function at(ms, fn) { animTimers.push(setTimeout(fn, ms)); }
+  function clearLayer(layer) { while (layer.firstChild) layer.removeChild(layer.firstChild); }
+  function beginAnimation() {
+    cancelAnimation();
+    state.busy = true;
+    panEls.left.classList.add('animating');
+    panEls.right.classList.add('animating');
+    render();   // greys out Undo and the machine buttons
+  }
+  function cancelAnimation() {
+    for (var i = 0; i < animTimers.length; i++) clearTimeout(animTimers[i]);
+    animTimers = [];
+    var sides = ['left', 'right'];
+    for (var k = 0; k < 2; k++) {
+      clearLayer(animLayers[sides[k]]);
+      clearLayer(trayLayers[sides[k]]);
+      panEls[sides[k]].classList.remove('animating');
     }
-    state.board = next;
-    normalizeBoard();
-    if (shareTimer !== null) clearTimeout(shareTimer);
-    shareTimer = setTimeout(function () {
-      shareTimer = null;
+    gantryEl.classList.remove('flash');
+    gantryEl.style.transition = 'none';   // park the copier off-screen without sliding there
+    gantryEl.style.transform = '';
+    svg.classList.remove('shake');
+    state.busy = false;
+  }
+  // placeNow jumps an element to a transform (and opacity); glide gets there over ms
+  function placeNow(el, transform, opacity) {
+    el.style.transition = 'none';
+    el.style.transform = transform;
+    if (opacity !== null && opacity !== undefined) el.style.opacity = opacity;
+  }
+  function glide(el, ms, transform, opacity, easing) {
+    el.getBoundingClientRect();   // settle the starting style so the transition has somewhere to start from
+    el.style.transition = 'transform ' + ms + 'ms ' + (easing || 'ease-in-out') + ', opacity ' + ms + 'ms ease';
+    el.style.transform = transform;
+    if (opacity !== null && opacity !== undefined) el.style.opacity = opacity;
+  }
+  // draw a copy of a laid-out piece into the side's animation layer
+  function spawn(side, entry) {
+    var el = entry.p.type === 'box' ? drawBox(entry.p, entry.x, entry.y, false) : drawWeight(entry.p, entry.x, entry.y);
+    animLayers[side].appendChild(el);
+    return { el: el, p: entry.p, x: entry.x, y: entry.y, w: entry.w, h: entry.h };
+  }
+  function tempWeight(v) { return { id: -1, type: 'weight', value: v }; }   // only ever drawn during an animation
+  // transform that shows a piece drawn at (item.x, item.y) with its top-left corner at (gx, gy), scaled by s
+  function fitTransform(item, gx, gy, s) {
+    return 'translate(' + (gx - s * item.x) + 'px, ' + (gy - s * item.y) + 'px) scale(' + s + ')';
+  }
+  function shiftTransform(item, x, y) {   // full size, corner on (x, y)
+    return 'translate(' + (x - item.x) + 'px, ' + (y - item.y) + 'px) scale(1)';
+  }
+
+  // --- share trays: n rounded trays side by side under the pan, below the beam ---
+  var TRAY_TOP = 298, TRAY_H = 96, TRAY_GAP = 10, TRAY_SPAN = 320;
+  function makeTrays(side, n) {
+    var out = [], w = (TRAY_SPAN - TRAY_GAP * (n - 1)) / n;
+    for (var i = 0; i < n; i++) {
+      var geom = { x: PAN_X[side] - TRAY_SPAN / 2 + i * (w + TRAY_GAP), y: TRAY_TOP, w: w, h: TRAY_H };
+      var g = svgEl('g', { 'class': 'tray' });
+      g.appendChild(svgEl('rect', { x: geom.x, y: geom.y, width: geom.w, height: geom.h, rx: 10 }));
+      var label = svgEl('text', { x: geom.x + 9, y: geom.y + 18 });
+      label.textContent = String(i + 1);
+      g.appendChild(label);
+      g.style.transformOrigin = (geom.x + geom.w / 2) + 'px ' + (geom.y + geom.h / 2) + 'px';
+      placeNow(g, 'scale(0.9)', 0);
+      trayLayers[side].appendChild(g);
+      out.push({ g: g, geom: geom, sizes: [], slots: [] });
+    }
+    return out;
+  }
+  // lay the tray's items (tray.sizes = [{ w, h }]) side by side, shrunk to fit: fills tray.slots with { gx, gy, s }
+  function layoutTray(tray) {
+    var inner = tray.geom.w - 14, innerH = tray.geom.h - 28, totalW = 0, maxH = 0;
+    for (var i = 0; i < tray.sizes.length; i++) { totalW += tray.sizes[i].w; maxH = Math.max(maxH, tray.sizes[i].h); }
+    totalW += GAP * (tray.sizes.length - 1);
+    var s = Math.min(1, inner / Math.max(1, totalW), innerH / Math.max(1, maxH));
+    var x = tray.geom.x + tray.geom.w / 2 - s * totalW / 2;
+    var bottom = tray.geom.y + tray.geom.h - 8;
+    tray.slots = [];
+    for (var j = 0; j < tray.sizes.length; j++) {
+      tray.slots.push({ gx: x, gy: bottom - s * tray.sizes[j].h, s: s });
+      x += s * (tray.sizes[j].w + GAP);
+    }
+  }
+  // the transform that shows an item in its tray slot, shrunk towards the tray's centre by k (1 = as dealt)
+  function slotTransform(item, tray, slot, k) {
+    var cx = tray.geom.x + tray.geom.w / 2, cy = tray.geom.y + tray.geom.h / 2;
+    return fitTransform(item, cx + k * (slot.gx - cx), cy + k * (slot.gy - cy), slot.s * k);
+  }
+  function showTrays(plan, ms) {
+    ['left', 'right'].forEach(function (s) {
+      plan[s].trays.forEach(function (t) { glide(t.g, ms, 'scale(1)', 1, 'ease-out'); });
+    });
+  }
+  var DROP_EASE = 'cubic-bezier(.35, 0, .75, 1)';
+
+  // --- Share by n: trays, combine, cut, deal, keep one (about 2.2 s) ---
+  var SHARE_T = {
+    trays: 200,                                   // trays fade in
+    combine: 200, combineDur: 300,                // known blocks slide together...
+    swap: 520,                                    // ...and become one total block
+    cut: 600, cutDur: 250,                        // a line sweeps across the total
+    split: 870, splitDur: 200,                    // it splits into n equal blocks
+    deal: 1120, dropGap: 150, dropDur: 300, dealSpan: 750,   // pieces drop into the trays round-robin
+    keepPause: 200, keepDur: 350                  // trays 2..n shrink away; tray 1's contents rise back
+  };
+  function animateShare(n, next) {
+    beginAnimation();
+    var sides = ['left', 'right'], plan = {}, maxCount = 0;
+    sides.forEach(function (s) {
+      var lay = layoutSide(state.board[s], s), boxes = [], weights = [];
+      for (var i = 0; i < lay.length; i++) {
+        var it = spawn(s, lay[i]);
+        if (it.p.type === 'box') boxes.push(it); else weights.push(it);
+      }
+      var known = sideKnown(state.board[s]);
+      var p = { boxes: boxes, weights: weights, known: known, total: null, cutLine: null, cuts: [],
+        trays: makeTrays(s, n), count: boxes.length + (known > 0 ? n : 0), finalLay: layoutSide(next[s], s) };
+      // every tray gets the same contents: boxes j, j+n, j+2n... then one cut block
+      for (var k = 0; k < p.count; k++) {
+        p.trays[k % n].sizes.push(k < boxes.length ? boxes[k] : blockSize(known / n));
+      }
+      p.trays.forEach(layoutTray);
+      plan[s] = p;
+      maxCount = Math.max(maxCount, p.count);
+    });
+    function itemAt(p, i) { return i < p.boxes.length ? p.boxes[i] : p.cuts[i - p.boxes.length]; }
+
+    // 1. trays appear
+    at(10, function () { showTrays(plan, SHARE_T.trays); });
+    // 2. known blocks slide together into one block showing the total (only when there are two or more)
+    at(SHARE_T.combine, function () {
+      sides.forEach(function (s) {
+        var p = plan[s];
+        if (p.weights.length < 2) return;
+        var bs = blockSize(p.known), cx = PAN_X[s] - bs.w / 2, cy = PAN_TOP - bs.h;
+        p.weights.forEach(function (w) {
+          glide(w.el, SHARE_T.combineDur, shiftTransform(w, cx + (bs.w - w.w) / 2, cy + bs.h - w.h), 1, 'ease-in');
+        });
+      });
+    });
+    at(SHARE_T.swap, function () {
+      sides.forEach(function (s) {
+        var p = plan[s];
+        if (p.weights.length === 0) return;
+        if (p.weights.length === 1) { p.total = p.weights[0]; return; }
+        var bs = blockSize(p.known);
+        p.weights.forEach(function (w) { animLayers[s].removeChild(w.el); });
+        p.total = spawn(s, { p: tempWeight(p.known), x: PAN_X[s] - bs.w / 2, y: PAN_TOP - bs.h, w: bs.w, h: bs.h });
+        placeNow(p.total.el, 'scale(1)', 0.4);
+        glide(p.total.el, 80, 'scale(1)', 1);
+      });
+    });
+    // 3. the cut: a thin line sweeps across the total block, then it splits into n equal blocks
+    at(SHARE_T.cut, function () {
+      sides.forEach(function (s) {
+        var t = plan[s].total;
+        if (!t) return;
+        var line = svgEl('line', { 'class': 'cut-line', x1: t.x, y1: t.y - 6, x2: t.x, y2: t.y + t.h + 6 });
+        animLayers[s].appendChild(line);
+        placeNow(line, 'translate(0px, 0px)', 1);
+        glide(line, SHARE_T.cutDur, 'translate(' + t.w + 'px, 0px)', 1, 'linear');
+        plan[s].cutLine = line;
+      });
+    });
+    at(SHARE_T.split, function () {
+      sides.forEach(function (s) {
+        var p = plan[s];
+        if (!p.total) return;
+        animLayers[s].removeChild(p.cutLine);
+        animLayers[s].removeChild(p.total.el);
+        var each = p.known / n, bs = blockSize(each);
+        var rowW = n * bs.w + GAP * (n - 1), x0 = PAN_X[s] - rowW / 2, y = PAN_TOP - bs.h;
+        var centreX = PAN_X[s] - bs.w / 2;
+        for (var j = 0; j < n; j++) {
+          var it = spawn(s, { p: tempWeight(each), x: x0 + j * (bs.w + GAP), y: y, w: bs.w, h: bs.h });
+          placeNow(it.el, 'translate(' + (centreX - it.x) + 'px, 0px)', 1);
+          glide(it.el, SHARE_T.splitDur, 'translate(0px, 0px)', 1, 'ease-out');
+          p.cuts.push(it);
+        }
+      });
+    });
+    // 4. dealing: boxes first, then the cut blocks, one at a time round-robin into the trays
+    var gap = maxCount > 1 ? Math.min(SHARE_T.dropGap, SHARE_T.dealSpan / (maxCount - 1)) : SHARE_T.dropGap;
+    sides.forEach(function (s) {
+      var p = plan[s];
+      for (var i = 0; i < p.count; i++) {
+        (function (i) {
+          at(SHARE_T.deal + i * gap, function () {
+            var it = itemAt(p, i), tray = p.trays[i % n], slot = tray.slots[Math.floor(i / n)];
+            glide(it.el, SHARE_T.dropDur, slotTransform(it, tray, slot, 1), 1, DROP_EASE);
+          });
+        })(i);
+      }
+    });
+    var dealEnd = SHARE_T.deal + Math.max(0, maxCount - 1) * gap + SHARE_T.dropDur;
+    // 5. keep one: trays 2..n shrink and fade with their contents; tray 1's contents rise back onto the pan
+    var tKeep = dealEnd + SHARE_T.keepPause;
+    at(tKeep, function () {
+      sides.forEach(function (s) {
+        var p = plan[s];
+        var finalBoxes = p.finalLay.filter(function (e) { return e.p.type === 'box'; });
+        var finalWeights = p.finalLay.filter(function (e) { return e.p.type === 'weight'; });
+        for (var j = 0; j < n; j++) {
+          var tray = p.trays[j];
+          glide(tray.g, SHARE_T.keepDur, j === 0 ? 'scale(1)' : 'scale(0.5)', 0);
+          for (var i = j; i < p.count; i += n) {
+            var it = itemAt(p, i), slot = tray.slots[Math.floor(i / n)];
+            if (j > 0) { glide(it.el, SHARE_T.keepDur, slotTransform(it, tray, slot, 0.5), 0); continue; }
+            // tray 1: land exactly where the redraw will put the piece
+            var target = i < p.boxes.length ? finalBoxes[Math.floor(i / n)] : finalWeights[0];
+            if (target) glide(it.el, SHARE_T.keepDur, shiftTransform(it, target.x, target.y), 1);
+            else glide(it.el, SHARE_T.keepDur, slotTransform(it, tray, slot, 0.5), 0);
+          }
+        }
+      });
+    });
+    at(tKeep + SHARE_T.keepDur + 30, function () {
+      cancelAnimation();
+      state.board = next;
+      normalizeBoard();
+      freshIds = {};   // the kept pieces were on screen the whole time: no second fade-in
       render();
       maybeWin();
-    }, 270);
+    });
+  }
+
+  // --- Share that will not come out even: trays appear, the fair part is dealt, the rest has
+  //     nowhere to go, the seesaw shakes and everything bounces back (about 1.5 s) ---
+  var REFUSE_T = { trays: 200, deal: 200, dropGap: 150, dropDur: 300, dealSpan: 750, lift: 250, wobble: 380, bounce: 380, shake: 420, msgPause: 80 };
+  function animateShareRefusal(n) {
+    beginAnimation();
+    var sides = ['left', 'right'], plan = {}, maxFair = 0;
+    sides.forEach(function (s) {
+      var lay = layoutSide(state.board[s], s), whole = [], halves = [], weights = [];
+      for (var i = 0; i < lay.length; i++) {
+        var it = spawn(s, lay[i]);
+        if (it.p.type !== 'box') weights.push(it);
+        else if (pieceFrac(it.p) === 1) whole.push(it);
+        else halves.push(it);
+      }
+      var fair = Math.floor(whole.length / n) * n;        // boxes that deal out evenly
+      var stuck = whole.slice(fair).concat(halves);        // boxes with nowhere fair to go...
+      if (sideKnown(state.board[s]) % n !== 0) stuck = stuck.concat(weights);   // ...and blocks that will not cut evenly
+      var p = { whole: whole, fair: fair, stuck: stuck, trays: makeTrays(s, n), moved: [] };
+      for (var k = 0; k < fair; k++) p.trays[k % n].sizes.push(whole[k]);
+      p.trays.forEach(layoutTray);
+      plan[s] = p;
+      maxFair = Math.max(maxFair, fair);
+    });
+    at(10, function () { showTrays(plan, REFUSE_T.trays); });
+    var gap = maxFair > 1 ? Math.min(REFUSE_T.dropGap, REFUSE_T.dealSpan / (maxFair - 1)) : REFUSE_T.dropGap;
+    sides.forEach(function (s) {
+      var p = plan[s];
+      for (var i = 0; i < p.fair; i++) {
+        (function (i) {
+          at(REFUSE_T.deal + i * gap, function () {
+            var it = p.whole[i], tray = p.trays[i % n], slot = tray.slots[Math.floor(i / n)];
+            glide(it.el, REFUSE_T.dropDur, slotTransform(it, tray, slot, 1), 1, DROP_EASE);
+            p.moved.push(it);
+          });
+        })(i);
+      }
+    });
+    var tStuck = REFUSE_T.deal + Math.max(0, maxFair - 1) * gap + REFUSE_T.dropDur;
+    // the leftover pieces lift off the pan and wobble: nowhere fair to go
+    at(tStuck, function () {
+      sides.forEach(function (s) {
+        plan[s].stuck.forEach(function (it) {
+          it.el.style.transformOrigin = (it.x + it.w / 2) + 'px ' + (it.y + it.h / 2) + 'px';
+          glide(it.el, REFUSE_T.lift, 'translate(0px, -26px)', 1, 'ease-out');
+          plan[s].moved.push(it);
+        });
+      });
+    });
+    at(tStuck + REFUSE_T.lift, function () {
+      sides.forEach(function (s) { plan[s].stuck.forEach(function (it) { it.el.classList.add('stuck'); }); });
+    });
+    // the seesaw shakes gently and everything bounces back onto the pans
+    var tBounce = tStuck + REFUSE_T.lift + REFUSE_T.wobble;
+    at(tBounce, function () {
+      svg.classList.add('shake');
+      sides.forEach(function (s) {
+        plan[s].stuck.forEach(function (it) { it.el.classList.remove('stuck'); });
+        plan[s].moved.forEach(function (it) {
+          glide(it.el, REFUSE_T.bounce, 'translate(0px, 0px) scale(1)', 1, 'cubic-bezier(.34, 1.56, .64, 1)');
+        });
+        plan[s].trays.forEach(function (t) { glide(t.g, REFUSE_T.bounce, 'scale(0.95)', 0); });
+      });
+    });
+    at(tBounce + Math.max(REFUSE_T.bounce, REFUSE_T.shake) + REFUSE_T.msgPause, function () {
+      cancelAnimation();
+      render();
+      showMachineMsg("That won't share evenly. Try taking something off first.");
+    });
+  }
+
+  // --- Clone xn: a copier bar slides in over both pans, flashes, and every piece pops its
+  //     n-1 copies, which slide out from the original to their places (about 1.3 s) ---
+  var CLONE_T = { flash: 320, spread: 480, spreadDur: 450, out: 1000, finish: 1320 };
+  function animateClone(n, cloned) {
+    beginAnimation();
+    assignIds(cloned);   // the copies get their ids now so the animation can draw them...
+    freshIds = {};       // ...and they fade in here, not again on the redraw
+    var sides = ['left', 'right'], plan = {};
+    sides.forEach(function (s) {
+      var lay = layoutSide(state.board[s], s);
+      plan[s] = { items: lay.map(function (e) { return spawn(s, e); }), len: lay.length, finalLay: layoutSide(cloned[s], s) };
+    });
+    // the copier slides in from the left
+    gantryEl.style.transition = 'none';
+    gantryEl.style.transform = 'translate(-900px, 0px)';
+    gantryEl.getBoundingClientRect();
+    gantryEl.style.transition = '';
+    gantryEl.style.transform = 'translate(0px, 0px)';
+    at(CLONE_T.flash, function () { gantryEl.classList.add('flash'); });
+    at(CLONE_T.spread, function () {
+      sides.forEach(function (s) {
+        var p = plan[s];
+        for (var i = 0; i < p.finalLay.length; i++) {
+          var f = p.finalLay[i], o = p.items[i % p.len];   // copy i came from original i % len
+          if (!o) continue;
+          if (i < p.len) {
+            glide(o.el, CLONE_T.spreadDur, shiftTransform(o, f.x, f.y), 1);
+          } else {
+            var c = spawn(s, f);
+            placeNow(c.el, shiftTransform(c, o.x, o.y), 0);
+            glide(c.el, CLONE_T.spreadDur, 'translate(0px, 0px) scale(1)', 1, 'ease-out');
+          }
+        }
+      });
+    });
+    at(CLONE_T.out, function () {
+      gantryEl.classList.remove('flash');
+      gantryEl.style.transform = 'translate(900px, 0px)';
+    });
+    at(CLONE_T.finish, function () {
+      cancelAnimation();
+      state.board = cloned;
+      normalizeBoard();   // merges half-boxes; the merged box fades in
+      render();
+      maybeWin();
+    });
   }
   for (var mb = 0; mb < machineBtns.length; mb++) {
     machineBtns[mb].addEventListener('click', function (ev) {
@@ -953,7 +1397,7 @@
   }
 
   function onPointerDown(ev) {
-    if (ev.button !== 0 || state.dialMode) return;
+    if (ev.button !== 0 || state.dialMode || state.busy) return;
     var pal = ev.target.closest ? ev.target.closest('.pal-block') : null;
     if (pal) {
       drag = { kind: 'palette', value: parseInt(pal.getAttribute('data-value'), 10),
@@ -1090,12 +1534,7 @@
   loadPuzzle(0);
   // the ground's width is only known once laid out; re-place the animals after a resize
   window.addEventListener('resize', function () {
-    var gw = groundWidth();
-    for (var i = 0; i < critters.length; i++) {
-      var c = critters[i];
-      c.x = Math.min(c.x, Math.max(0, gw - c.w));
-      c.target = Math.min(c.target, Math.max(0, gw - c.w));
-      placeCritter(c);
-    }
+    if (farmHidden) return;
+    reclampCritters();
   });
 })();
