@@ -1,14 +1,16 @@
 // Puzzle data for the seesaw spike. Plain data, no logic.
-// A piece is { type: 'weight', value: N } or { type: 'box' }.
-// All boxes in one puzzle share the same hiddenWeight.
+// A piece is { type: 'weight', value: N } or { type: 'box' } or { type: 'box', fraction: 0.5 } (half a box).
+// All boxes in one puzzle share the same hiddenWeight; a half-box weighs half of it.
 // goal 'level'   -> win when both pans are non-empty and weigh the same.
 // goal 'isolate' -> win when level AND one side is exactly one box and nothing else,
 //                   AND the other side holds only known weights (at least one).
 //
 // Puzzles are grouped into levels: LEVELS = [{ name, subtitle, puzzles: [...] }].
+// A level with machines: true shows the Clone / Share machine row (level 4).
 
 var W = function (v) { return { type: 'weight', value: v }; };
 var BOX = function () { return { type: 'box' }; };
+var HALFBOX = function () { return { type: 'box', fraction: 0.5 }; };
 
 var LEVELS = [
   // ---------- Level 1: make it level (no boxes) ----------
@@ -84,6 +86,37 @@ var LEVELS = [
       {
         left: [BOX(), BOX(), BOX(), W(1)], right: [BOX(), BOX(), W(1), W(6)], hiddenWeight: 6, goal: 'isolate',
         hint: 'Two boxes on the right, three on the left. Take boxes off in pairs, one from each side, until only one is left.'
+      }
+    ]
+  },
+
+  // ---------- Level 4: clone and share (machines that act on both sides at once) ----------
+  // Each starts level. The load-time check in app.js runs a short search over
+  // remove / clone / share moves and confirms every one of these can be finished.
+  {
+    name: 'Clone and share',
+    subtitle: 'Machines that work on both sides at once',
+    machines: true,
+    puzzles: [
+      {
+        left: [BOX(), BOX()], right: [W(8)], hiddenWeight: 4, goal: 'isolate',
+        hint: 'Two boxes against 8. Share both sides by 2.'
+      },
+      {
+        left: [BOX(), BOX(), BOX()], right: [W(6), W(6)], hiddenWeight: 4, goal: 'isolate',
+        hint: 'Three boxes. Share both sides by 3.'
+      },
+      {
+        left: [BOX(), BOX(), W(3)], right: [W(8), W(3)], hiddenWeight: 4, goal: 'isolate',
+        hint: 'Take the 3 off each side first, then share.'
+      },
+      {
+        left: [HALFBOX()], right: [W(3)], hiddenWeight: 6, goal: 'isolate',
+        hint: 'Half a box. Clone both sides by 2 to make it whole.'
+      },
+      {
+        left: [BOX(), BOX(), BOX(), W(3)], right: [BOX(), W(3), W(6)], hiddenWeight: 3, goal: 'isolate',
+        hint: 'Take a box off each side, then the 3s, then share.'
       }
     ]
   }

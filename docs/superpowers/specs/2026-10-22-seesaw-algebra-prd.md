@@ -247,27 +247,33 @@ Each level should end on its strongest puzzle, and the next level should open
 with a new idea, not an easier version of the last one. Spike levels:
 "Make it level", "What's in the box?", "Boxes on both sides".
 
-### 4.14 Motivation layer (open design question)
+### 4.14 Motivation layer: the farm
 
 Some of the activity is rote, and a kid who dislikes math needs a reason to
-do the next puzzle that is not "because it is good for you." Candidates,
-none chosen yet:
+do the next puzzle that is not "because it is good for you." Decision (Ben,
+2026-10-23): a collection, shaped as a farm.
 
-- Collection: every opened box adds its animal to a collection. Heavier and
-  rarer animals only appear in later levels, so progress is visible as a
-  growing menagerie rather than a score.
-- Economy of moves: a puzzle solved in the fewest moves earns a mark (one to
-  three). This rewards thinking before touching, which is exactly the habit
-  the tutor wants, and it is the same thing the cut Predict button was for.
-- A frame story: the seesaw is a shipping scale and the player is weighing
-  mystery crates for a dock. Gives the levels a reason to exist and the art
-  pass a direction.
-- A level map the tutor and kid can see fill up across sessions, since
-  sessions are weekly with gaps.
+- A little farm is visible at all times beside the play area.
+- Every box-opening puzzle won for the first time adds its animal to the
+  farm. The animal is the one from the reveal (its weight decides the
+  species), so heavier animals only come from later levels.
+- Each new animal gets a randomly rolled colour variant with a rarity:
+  common (natural), uncommon (golden), rare (blue), legendary (rainbow).
+  The reveal says what you got, and makes a fuss for rare and legendary.
+- The animals wander around the farm.
+- The farm persists between sessions on the tutor's laptop (per kid, once
+  per-kid names exist).
 
-Caution: external rewards on a rote task can make the task feel more rote.
-Prefer rewards that come from the content (what was in the box) over points
-layered on top.
+v1 in the spike is deliberately simple: emoji on tinted badges, a flat
+green ground, a basic wander loop. The art pass makes it cute.
+
+Candidates kept for later, not chosen: fewest-moves marks per puzzle
+(rewards thinking before touching; could layer on top once levels are
+stable); a frame story (the seesaw as a shipping scale); a level map that
+fills across weekly sessions.
+
+Caution that still applies: rewards that come from the content (what was in
+the box) beat points layered on top. The farm is content.
 
 ## 5. The win condition
 
@@ -364,6 +370,16 @@ undo, costume swap, and if cheap the dial check. Its only job is to answer
 "does the seesaw feel intuitive to a real kid." We keep what we learn and
 throw away the code.
 
+Added 2026-10-23 at Ben's request: the spike also gets a fourth level,
+"Clone and share", to try the multiplication and division analogy early
+rather than in a separate spike. Two machines, both acting on both sides at
+once: Clone (x2, x3) copies everything on each side; Share (by 2, by 3)
+deals each side into equal trays and keeps one. v1 simplification: Share
+refuses with a plain message when a side will not deal out evenly, instead
+of producing fraction chips. One puzzle starts with a half-box so that
+cloning is the way to make it whole. The roadmap's "second spike" for
+multiplication and division is therefore folded into this one.
+
 Watch list for the first kid test, chosen in advance so the test can fail:
 
 1. Do they read level as "the same amount" without being told?
@@ -382,8 +398,8 @@ Watch list for the first kid test, chosen in advance so the test can fail:
 
 ## 12. Open questions
 
-- Which motivation layer (4.14), if any, and whether it is in the first real
-  build.
+- How rarity odds and the per-kid farm interact with the tutor sandbox
+  (does a sandbox puzzle earn an animal?). Default: no.
 - Whether the cloner and dealing-out (4.5, 4.6) survive a play test, and what
   replaces them if not.
 
@@ -397,8 +413,8 @@ Watch list for the first kid test, chosen in advance so the test can fail:
 ## 13. Roadmap
 
 1. Spike: stages 1 and 2, one afternoon, throwaway. Test with one kid.
-2. Second spike: multiplication and division (the cloner and dealing out),
-   to find out whether the analogy holds before building on it.
+2. Same spike, level 4: multiplication and division (the cloner and dealing
+   out), to find out whether the analogy holds before building on it.
 3. Real build of stages 1 to 6 with the tutor sandbox and a chosen
    motivation layer, from a plan written off this document and the spikes'
    lessons.

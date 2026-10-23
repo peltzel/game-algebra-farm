@@ -55,7 +55,9 @@
     revealed: false,   // boxes have been opened after a win
     dialMode: false,
     dialValue: 0,
-    hintShown: false
+    hintShown: false,
+    variant: null,     // colour variant of this puzzle's animal (from the farm), or null if not yet won
+    newAnimal: false   // this win added an animal to the farm
   };
   var nextId = 1;
 
@@ -82,6 +84,10 @@
   var levelDoneEl = $('levelDone');
   var levelDoneTextEl = $('levelDoneText');
   var levelDoneNextBtn = $('levelDoneNextBtn');
+  var playEl = $('play');
+  var machinesEl = $('machines');
+  var machineMsgEl = $('machineMsg');
+  var machineBtns = machinesEl.querySelectorAll('button.machine');
 
   var SVG_NS = 'http://www.w3.org/2000/svg';
   function svgEl(name, attrs) {
@@ -90,19 +96,357 @@
     return el;
   }
 
+  // ---------- farm: colour variants and rarity ----------
+  // Rolled once per earned animal. 'adj' goes into the label: "a dog" -> "a golden dog".
+  var VARIANTS = [
+    { id: 'common',    chance: 0.60, adj: '',        shout: '' },
+    { id: 'uncommon',  chance: 0.25, adj: 'golden',  shout: '' },
+    { id: 'rare',      chance: 0.12, adj: 'blue',    shout: 'Rare!' },
+    { id: 'legendary', chance: 0.03, adj: 'rainbow', shout: 'LEGENDARY!' }
+  ];
+  function variantById(id) {
+    for (var i = 0; i < VARIANTS.length; i++) if (VARIANTS[i].id === id) return VARIANTS[i];
+    return VARIANTS[0];
+  }
+  function rollVariant() {
+    var r = Math.random(), acc = 0;
+    for (var i = 0; i < VARIANTS.length; i++) {
+      acc += VARIANTS[i].chance;
+      if (r < acc) return VARIANTS[i];
+    }
+    return VARIANTS[0];
+  }
+  // "a dog" + golden -> "a golden dog"; "an elephant" + blue -> "a blue elephant"
+  function animalLabel(animal, variant) {
+    if (!variant || !variant.adj) return animal.name;
+    var sp = animal.name.indexOf(' ');
+    var noun = sp >= 0 ? animal.name.slice(sp + 1) : animal.name;
+    return 'a ' + variant.adj + ' ' + noun;
+  }
+  // CSS class that tints an emoji for this variant ('' for common)
+  function tintClass(variant) {
+    return variant && variant.id !== 'common' ? 'tint-' + variant.id : '';
+  }
+
+  // ---------- farm: storage ----------
+  // farm.animals = [{ key: 'level-pos', weight, variant }]; one entry per puzzle ever won
+  var FARM_KEY = 'seesaw-farm-v1';
+  var FARM_MAX_SHOWN = 30;
+  var GRASS_SHARE = 0.5;   // the bottom half of the ground is grass (matches .farm-ground in style.css)
+  var farm = loadFarm();
+  function loadFarm() {
+    try {
+      var raw = window.localStorage.getItem(FARM_KEY);
+      if (raw) {
+        var parsed = JSON.parse(raw);
+        if (parsed && Array.isArray(parsed.animals)) return parsed;
+      }
+    } catch (e) { /* storage unavailable or corrupt: start with an empty farm */ }
+    return { animals: [] };
+  }
+  function saveFarm() {
+    try { window.localStorage.setItem(FARM_KEY, JSON.stringify(farm)); } catch (e) { /* ignore */ }
+  }
+  function puzzleKey(index) {
+    var f = FLAT[index];
+    return f.level + '-' + f.pos;
+  }
+  function farmAnimalFor(index) {
+    var key = puzzleKey(index);
+    for (var i = 0; i < farm.animals.length; i++) if (farm.animals[i].key === key) return farm.animals[i];
+    return null;
+  }
+  // called once on the first win of a box puzzle; returns the new entry
+  function earnAnimal(index, weight) {
+    var entry = { key: puzzleKey(index), weight: weight, variant: rollVariant().id };
+    farm.animals.push(entry);
+    saveFarm();
+    renderFarm();
+    return entry;
+  }
+  function resetFarm() {
+    farm = { animals: [] };
+    saveFarm();
+    renderFarm();
+  }
+
+  // ---------- farm: rendering and wandering ----------
+  var farmGround = $('farmGround');
+  var farmCountEl = $('farmCount');
+  var reducedMotion = false;
+  try {
+    reducedMotion = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  } catch (e) { reducedMotion = false; }
+  var critters = [];      // live wanderers: { el, w, x, target, pauseUntil, speed, facingRight }
+  var wanderTimer = null;
+
+  function groundWidth() { return farmGround.clientWidth || 200; }
+
+  function renderFarm() {
+    while (farmGround.firstChild) farmGround.removeChild(farmGround.firstChild);
+    critters = [];
+    var n = farm.animals.length;
+    farmCountEl.textContent = n + (n === 1 ? ' animal' : ' animals');
+    var shown = farm.animals.slice(0, FARM_MAX_SHOWN);
+    for (var i = 0; i < shown.length; i++) {
+      var a = shown[i];
+      var animal = animalFor(a.weight);
+      if (!animal) continue;
+      var variant = variantById(a.variant);
+      var size = 20 + Math.min(a.weight, 10) * 1.6;      // 22 .. 36 px: bigger animals are bigger
+      var el = document.createElement('div');
+      el.className = 'farm-animal ' + variant.id;
+      el.title = animalLabel(animal, variant);
+      var badge = document.createElement('span');
+      badge.className = 'badge';
+      badge.style.width = Math.round(size * 1.5) + 'px';
+      badge.style.height = Math.round(size * 1.5) + 'px';
+      var em = document.createElement('span');
+      em.className = 'emoji ' + tintClass(variant);
+      em.style.fontSize = Math.round(size) + 'px';
+      em.textContent = animal.emoji;
+      badge.appendChild(em);
+      if (variant.id === 'rare' || variant.id === 'legendary') {
+        var star = document.createElement('span');
+        star.className = 'star';
+        star.textContent = '★';
+        badge.appendChild(star);
+      }
+      el.appendChild(badge);
+      // spread them across the grass strip so they do not all stand on one line
+      var w = Math.round(size * 1.5) + 4;
+      var gw = groundWidth();
+      var c = {
+        el: el, w: w,
+        x: Math.random() * Math.max(1, gw - w),
+        target: 0, pauseUntil: 0,
+        speed: 10 + Math.random() * 10,       // px per second: a slow amble
+        facingRight: Math.random() < 0.5
+      };
+      c.target = c.x;
+      // spread them across the grass band (the bottom half of the ground); the ones
+      // nearer the bottom edge draw on top, as if closer to the viewer
+      var grassH = (farmGround.clientHeight || 200) * GRASS_SHARE;
+      var bottom = 6 + Math.random() * Math.max(0, grassH - w - 10);
+      el.style.bottom = Math.round(bottom) + 'px';
+      el.style.zIndex = String(500 - Math.round(bottom));
+      placeCritter(c);
+      farmGround.appendChild(el);
+      critters.push(c);
+    }
+    startWandering();
+  }
+
+  function placeCritter(c) {
+    c.el.style.left = Math.round(c.x) + 'px';
+    c.el.classList.toggle('face-right', c.facingRight);
+  }
+
+  function pickTarget(c, now) {
+    var gw = groundWidth();
+    c.target = Math.random() * Math.max(1, gw - c.w);
+    // pause for 1 to 3 seconds before heading off, now and then
+    if (Math.random() < 0.6) c.pauseUntil = now + 1000 + Math.random() * 2000;
+  }
+
+  function wanderStep() {
+    var now = Date.now();
+    var dt = 0.06;   // seconds per tick
+    for (var i = 0; i < critters.length; i++) {
+      var c = critters[i];
+      if (now < c.pauseUntil) continue;
+      var dx = c.target - c.x;
+      if (Math.abs(dx) < 1) { pickTarget(c, now); continue; }
+      var step = Math.min(Math.abs(dx), c.speed * dt);
+      c.x += dx > 0 ? step : -step;
+      c.facingRight = dx > 0;
+      placeCritter(c);
+    }
+  }
+
+  function startWandering() {
+    if (wanderTimer !== null) { clearInterval(wanderTimer); wanderTimer = null; }
+    if (reducedMotion || critters.length === 0) return;
+    wanderTimer = setInterval(wanderStep, 60);
+  }
+
+  $('farmResetBtn').addEventListener('click', function () {
+    if (farm.animals.length === 0) return;
+    if (window.confirm('Reset your farm? Every animal will leave, and you can win them back by playing again.')) {
+      resetFarm();
+      state.variant = null;
+      state.newAnimal = false;
+      render();
+    }
+  });
+
+  // ---------- SOLVER-BEGIN ----------
+  // Pure board rules, no DOM. The node check script slices this block out of the
+  // file by the SOLVER-BEGIN / SOLVER-END markers and runs it standalone, so keep
+  // everything between the markers free of references to the page or to state.
+  var SHARE_BLOCKS = [10, 5, 3, 2, 1];   // blocks a shared-out total is re-chunked into (largest first)
+
+  function pieceFrac(p) { return p.type === 'box' ? (p.fraction || 1) : 0; }
+  function pieceWeight(p, hidden) { return p.type === 'box' ? hidden * pieceFrac(p) : p.value; }
+  function sideTotal(pieces, hidden) {
+    var t = 0;
+    for (var i = 0; i < pieces.length; i++) t += pieceWeight(pieces[i], hidden);
+    return t;
+  }
+  function sideBoxes(pieces) {   // 1 per whole box, 0.5 per half-box
+    var n = 0;
+    for (var i = 0; i < pieces.length; i++) n += pieceFrac(pieces[i]);
+    return n;
+  }
+  function sideKnown(pieces) {   // total of the numbered blocks only
+    var t = 0;
+    for (var i = 0; i < pieces.length; i++) if (pieces[i].type === 'weight') t += pieces[i].value;
+    return t;
+  }
+  // greedy re-chunking of a known total into blocks: 8 -> [5, 3], 4 -> [3, 1]
+  function chunkWeight(total) {
+    var out = [], left = total;
+    for (var i = 0; i < SHARE_BLOCKS.length && left > 0; i++) {
+      while (left >= SHARE_BLOCKS[i]) { out.push(SHARE_BLOCKS[i]); left -= SHARE_BLOCKS[i]; }
+    }
+    return out;
+  }
+  // Pieces made here carry no id; the game hands out ids (and a fade-in) afterwards.
+  function newBox(frac) { return frac === 1 ? { type: 'box', fraction: 1 } : { type: 'box', fraction: frac }; }
+  function newWeight(v) { return { type: 'weight', value: v }; }
+  function copyPiece(p) {
+    return p.type === 'box' ? newBox(pieceFrac(p)) : newWeight(p.value);
+  }
+  // Merge rule: two half-boxes on one side become one whole box. Runs after every change.
+  function mergeHalves(pieces) {
+    var out = [], pendingHalf = -1;
+    for (var i = 0; i < pieces.length; i++) {
+      var p = pieces[i];
+      if (p.type === 'box' && pieceFrac(p) === 0.5) {
+        if (pendingHalf < 0) { pendingHalf = out.length; out.push(p); }
+        else { out[pendingHalf] = newBox(1); pendingHalf = -1; }
+      } else {
+        out.push(p);
+      }
+    }
+    return out;
+  }
+  function mergeBoard(b) { return { left: mergeHalves(b.left), right: mergeHalves(b.right) }; }
+  // Clone: every piece on the side appears n times (the originals stay, copies are new)
+  function cloneSide(pieces, n) {
+    var out = pieces.slice();
+    for (var k = 1; k < n; k++) for (var i = 0; i < pieces.length; i++) out.push(copyPiece(pieces[i]));
+    return out;
+  }
+  // Share: deal the side into n equal trays and keep one. Only when it comes out even.
+  function canShareSide(pieces, n) {
+    var boxes = sideBoxes(pieces), known = sideKnown(pieces);
+    return (boxes / n) % 1 === 0 && known % n === 0;
+  }
+  function shareSide(pieces, n) {
+    var keepBoxes = sideBoxes(pieces) / n, out = [];
+    for (var i = 0; i < pieces.length && keepBoxes > 0; i++) {
+      if (pieces[i].type === 'box' && pieceFrac(pieces[i]) === 1) { out.push(pieces[i]); keepBoxes--; }
+    }
+    var chunks = chunkWeight(sideKnown(pieces) / n);
+    for (var j = 0; j < chunks.length; j++) out.push(newWeight(chunks[j]));
+    return out;
+  }
+  function canShareBoard(b, n) { return canShareSide(b.left, n) && canShareSide(b.right, n); }
+  function shareBoard(b, n) { return { left: shareSide(b.left, n), right: shareSide(b.right, n) }; }
+  function cloneBoardTimes(b, n) { return { left: cloneSide(b.left, n), right: cloneSide(b.right, n) }; }
+
+  // win shape: exactly one whole box alone on one side, only numbered blocks (at least one) on the other
+  function isOnlyOneBox(pieces) { return pieces.length === 1 && pieces[0].type === 'box' && pieceFrac(pieces[0]) === 1; }
+  function isOnlyWeights(pieces) {
+    if (pieces.length === 0) return false;
+    for (var i = 0; i < pieces.length; i++) if (pieces[i].type !== 'weight') return false;
+    return true;
+  }
+  function isIsolated(b, hidden) {
+    if (sideTotal(b.left, hidden) !== sideTotal(b.right, hidden)) return false;
+    return (isOnlyOneBox(b.left) && isOnlyWeights(b.right)) || (isOnlyOneBox(b.right) && isOnlyWeights(b.left));
+  }
+
+  // Breadth-first search over: remove any one piece, clone x2, clone x3, share by 2, share by 3
+  // (merge rule applied after each). Returns { depth, moves } of a shortest win, or depth -1.
+  function solveByMachines(pz, maxDepth) {
+    var h = pz.hiddenWeight;
+    function sideKey(pieces) {
+      var ws = [];
+      for (var i = 0; i < pieces.length; i++) if (pieces[i].type === 'weight') ws.push(pieces[i].value);
+      ws.sort(function (a, b) { return a - b; });
+      return sideBoxes(pieces) + 'b|' + ws.join(',');
+    }
+    function key(b) { return sideKey(b.left) + ' / ' + sideKey(b.right); }
+    function pieceName(p) { return p.type === 'box' ? (pieceFrac(p) === 1 ? 'box' : 'half-box') : String(p.value); }
+    var start = mergeBoard({ left: pz.left.map(copyPiece), right: pz.right.map(copyPiece) });
+    if (isIsolated(start, h)) return { depth: 0, moves: [] };
+    var seen = {}; seen[key(start)] = true;
+    var queue = [{ board: start, moves: [] }];
+    while (queue.length) {
+      var cur = queue.shift();
+      if (cur.moves.length >= maxDepth) continue;
+      var next = [];
+      var sides = ['left', 'right'];
+      for (var s = 0; s < 2; s++) {
+        var arr = cur.board[sides[s]], tried = {};
+        for (var i = 0; i < arr.length; i++) {
+          var nm = pieceName(arr[i]);
+          if (tried[nm]) continue;
+          tried[nm] = true;
+          var nb = { left: cur.board.left.slice(), right: cur.board.right.slice() };
+          nb[sides[s]].splice(i, 1);
+          next.push({ board: nb, move: 'remove ' + nm + ' from ' + sides[s] });
+        }
+      }
+      next.push({ board: cloneBoardTimes(cur.board, 2), move: 'clone x2' });
+      next.push({ board: cloneBoardTimes(cur.board, 3), move: 'clone x3' });
+      if (canShareBoard(cur.board, 2)) next.push({ board: shareBoard(cur.board, 2), move: 'share by 2' });
+      if (canShareBoard(cur.board, 3)) next.push({ board: shareBoard(cur.board, 3), move: 'share by 3' });
+      for (var k = 0; k < next.length; k++) {
+        var nb2 = mergeBoard(next[k].board);
+        var moves = cur.moves.concat([next[k].move]);
+        if (isIsolated(nb2, h)) return { depth: moves.length, moves: moves };
+        var kk = key(nb2);
+        if (seen[kk]) continue;
+        // cap the search: cloning without bound would blow up the state space
+        if (nb2.left.length + nb2.right.length > 40) continue;
+        seen[kk] = true;
+        queue.push({ board: nb2, moves: moves });
+      }
+    }
+    return { depth: -1, moves: [] };
+  }
+  // ---------- SOLVER-END ----------
+
   // ---------- helpers ----------
   function makePiece(spec) {
-    return { id: nextId++, type: spec.type, value: spec.type === 'weight' ? spec.value : 0 };
+    var p = { id: nextId++, type: spec.type, value: spec.type === 'weight' ? spec.value : 0 };
+    if (spec.type === 'box') p.fraction = spec.fraction || 1;
+    return p;
   }
   function cloneBoard(b) {
     return { left: b.left.slice(), right: b.right.slice() };
   }
-  function sideTotal(pieces, hidden) {
-    var t = 0;
-    for (var i = 0; i < pieces.length; i++) {
-      t += pieces[i].type === 'box' ? hidden : pieces[i].value;
+  // pieces that came out of a machine have no id yet: give them one and let them fade in
+  var freshIds = {};
+  function assignIds(b) {
+    var sides = ['left', 'right'];
+    for (var s = 0; s < 2; s++) {
+      var arr = b[sides[s]];
+      for (var i = 0; i < arr.length; i++) {
+        if (arr[i].id === undefined) {
+          arr[i] = makePiece(arr[i]);
+          freshIds[arr[i].id] = true;
+        }
+      }
     }
-    return t;
+    return b;
+  }
+  // the merge rule, applied to the live board after every change
+  function normalizeBoard() {
+    state.board = assignIds(mergeBoard(state.board));
   }
   function effectiveHidden() {
     return state.dialMode ? state.dialValue : state.hiddenWeight;
@@ -117,8 +461,9 @@
     return { w: 40 + value * 2, h: 42 + value * 1.6 };
   }
   function pieceSize(p) {
-    return p.type === 'box' ? { w: BOX_SIZE, h: BOX_SIZE } : blockSize(p.value);
+    return p.type === 'box' ? { w: BOX_SIZE * pieceFrac(p), h: BOX_SIZE } : blockSize(p.value);
   }
+  function fmtNum(v) { return String(Math.round(v * 100) / 100); }
 
   function currentLevel() { return LEVELS[FLAT[state.index].level]; }
   function isLastOfLevel() {
@@ -137,16 +482,19 @@
 
   // ---------- notation ----------
   function formatSide(pieces, letter, substitute) {
-    var boxes = 0, sum = 0, parts = [];
+    var boxes = 0, halves = 0, sum = 0, parts = [];
     for (var i = 0; i < pieces.length; i++) {
-      if (pieces[i].type === 'box') boxes++; else sum += pieces[i].value;
+      if (pieces[i].type === 'box') {
+        if (pieceFrac(pieces[i]) === 1) boxes++; else halves++;
+      } else sum += pieces[i].value;
     }
     if (substitute !== null && substitute !== undefined) {
       for (var j = 0; j < boxes; j++) parts.push(String(substitute));
-    } else if (boxes === 1) {
-      parts.push(letter);
-    } else if (boxes > 1) {
-      parts.push(boxes + letter);
+      for (var hh = 0; hh < halves; hh++) parts.push(fmtNum(substitute / 2));
+    } else {
+      if (boxes === 1) parts.push(letter);
+      else if (boxes > 1) parts.push(boxes + letter);
+      for (var k = 0; k < halves; k++) parts.push(letter + '/2');   // after merging there is at most one
     }
     if (sum > 0) parts.push(String(sum));
     if (parts.length === 0) return '0';
@@ -196,31 +544,39 @@
   }
 
   function drawBox(p, x, y, open) {
-    var g = svgEl('g', { 'class': 'piece box' + (open ? ' open' : ''), 'data-id': p.id });
+    var frac = pieceFrac(p), half = frac !== 1;
+    var bw = BOX_SIZE * frac;
+    var g = svgEl('g', { 'class': 'piece box' + (half ? ' half' : '') + (open ? ' open' : ''), 'data-id': p.id });
     var bodyTop = y + 12, bodyH = BOX_SIZE - 12;
-    var cx = x + BOX_SIZE / 2, cy = bodyTop + bodyH / 2 + 2;
-    g.appendChild(svgEl('rect', { 'class': 'body', x: x, y: bodyTop, width: BOX_SIZE, height: bodyH, rx: 8 }));
-    var mark = svgEl('text', { 'class': 'mark', x: cx, y: cy, 'font-size': 32 });
-    mark.textContent = state.dialMode ? String(state.dialValue) : '?';
+    var cx = x + bw / 2, cy = bodyTop + bodyH / 2 + 2;
+    g.appendChild(svgEl('rect', { 'class': 'body', x: x, y: bodyTop, width: bw, height: bodyH, rx: 8 }));
+    if (half) {
+      // the cut edge: a dashed line where the other half used to be
+      g.appendChild(svgEl('line', { 'class': 'cut', x1: x + bw, y1: bodyTop + 2, x2: x + bw, y2: bodyTop + bodyH - 2 }));
+    }
+    var mark = svgEl('text', { 'class': 'mark', x: cx, y: cy, 'font-size': half ? 22 : 32 });
+    mark.textContent = state.dialMode ? fmtNum(state.dialValue * frac) : '?';
     g.appendChild(mark);
 
     // reveal: an animal sized to the weight climbs out of the box, number stays inside
+    // (a half-box only shows its number: half an animal would be odd)
     var reveal = svgEl('g', { 'class': 'reveal' });
-    var w = state.hiddenWeight;
-    var animal = animalFor(w);
+    var w = state.hiddenWeight * frac;
+    var animal = half ? null : animalFor(w);
     if (animal) {
       var size = 30 + Math.min(w, 10) * 4;   // 34 .. 70 SVG px (an elephant is about box-sized)
-      var a = svgEl('text', { 'class': 'animal', x: cx, y: y - size / 2 + 6, 'font-size': size });
+      // same tint as the animal that walks onto the farm
+      var a = svgEl('text', { 'class': 'animal ' + tintClass(state.variant), x: cx, y: y - size / 2 + 6, 'font-size': size });
       a.textContent = animal.emoji;
       reveal.appendChild(a);
     }
-    var num = svgEl('text', { 'class': 'num', x: cx, y: cy, 'font-size': 30 });
-    num.textContent = w;
+    var num = svgEl('text', { 'class': 'num', x: cx, y: cy, 'font-size': half ? 22 : 30 });
+    num.textContent = fmtNum(w);
     reveal.appendChild(num);
     g.appendChild(reveal);
 
     // lid (drawn last so it sits on top)
-    g.appendChild(svgEl('rect', { 'class': 'lid', x: x - 3, y: y, width: BOX_SIZE + 6, height: 16, rx: 5 }));
+    g.appendChild(svgEl('rect', { 'class': 'lid', x: x - 3, y: y, width: bw + 6, height: 16, rx: 5 }));
     return g;
   }
 
@@ -244,6 +600,7 @@
         var y = bottom - s.h;
         var el = p.type === 'box' ? drawBox(p, x, y, open) : drawWeight(p, x, y);
         el.setAttribute('data-side', side);
+        if (freshIds[p.id]) el.classList.add('fresh');   // just came out of a machine: fade in
         layer.appendChild(el);
         x += s.w + GAP;
       }
@@ -281,6 +638,7 @@
   function render() {
     renderSide('left');
     renderSide('right');
+    freshIds = {};   // the fade-in happens once, on the first draw after a machine
     renderBeam();
     renderNotation();
     renderLevelStrip();
@@ -289,6 +647,11 @@
     counterEl.textContent = 'Puzzle ' + (f.pos + 1) + ' of ' + lv.puzzles.length;
     titleEl.textContent = lv.subtitle;
     undoBtn.disabled = state.history.length === 0 || state.dialMode;
+    // machine row: only on levels that have machines; greyed while a win or the dial is showing
+    var showMachines = !!lv.machines;
+    machinesEl.classList.toggle('hidden', !showMachines);
+    playEl.classList.toggle('with-machines', showMachines);
+    for (var mi = 0; mi < machineBtns.length; mi++) machineBtns[mi].disabled = state.won || state.dialMode;
     hintEl.classList.toggle('hidden', !state.hintShown);
     hintEl.textContent = state.puzzle.hint;
     var showLevelDone = state.won && isLastOfLevel();
@@ -318,8 +681,17 @@
         statusEl.textContent = 'Level! Both sides weigh the same.';
       } else {
         var animal = animalFor(state.hiddenWeight);
+        var label = animal ? animalLabel(animal, state.variant) : '';
         statusEl.textContent = 'The box weighs ' + state.hiddenWeight + '!' +
-          (animal ? ' It was ' + animal.name + '.' : '');
+          (animal ? ' It was ' + label + '.' : '');
+        if (animal && state.newAnimal && state.variant) {
+          // second line: tell the kid an animal joined the farm (and how rare it is)
+          var note = document.createElement('div');
+          note.className = 'farm-note ' + state.variant.id;
+          var joins = label.charAt(0).toUpperCase() + label.slice(1) + ' joins your farm.';
+          note.textContent = state.variant.shout ? state.variant.shout + ' ' + joins : joins;
+          statusEl.appendChild(note);
+        }
       }
       return;
     }
@@ -340,28 +712,27 @@
     state.revealed = false;
     state.dialMode = false;
     state.hintShown = false;
+    var earned = farmAnimalFor(state.index);
+    state.variant = earned ? variantById(earned.variant) : null;
+    state.newAnimal = false;
     dialEl.classList.add('hidden');
     clearSelection();
+    clearMachineMsg();
+    normalizeBoard();
     render();
   }
 
   // ---------- win check ----------
-  function isOnlyOneBox(pieces) { return pieces.length === 1 && pieces[0].type === 'box'; }
-  function isOnlyWeights(pieces) {
-    if (pieces.length === 0) return false;
-    for (var i = 0; i < pieces.length; i++) if (pieces[i].type !== 'weight') return false;
-    return true;
-  }
   function checkWin() {
     var t = totals();
     if (t.left !== t.right) return false;
     var b = state.board;
     if (state.puzzle.goal === 'level') return b.left.length > 0 && b.right.length > 0;
-    return (isOnlyOneBox(b.left) && isOnlyWeights(b.right)) ||
-           (isOnlyOneBox(b.right) && isOnlyWeights(b.left));
+    return isIsolated(b, effectiveHidden());
   }
 
   function afterMove() {
+    normalizeBoard();
     render();
     maybeWin();
   }
@@ -371,6 +742,12 @@
     if (!checkWin()) return;
     state.won = true;
     completed[state.index] = true;
+    if (state.puzzle.goal === 'isolate' && !farmAnimalFor(state.index) && animalFor(state.hiddenWeight)) {
+      // first time this puzzle has been won in this browser: the animal joins the farm
+      var entry = earnAnimal(state.index, state.hiddenWeight);
+      state.variant = variantById(entry.variant);
+      state.newAnimal = true;
+    }
     render();   // boxes still drawn closed (revealed is false)
     if (state.puzzle.goal === 'isolate') {
       // open the boxes after the beam has settled, so the lid animates and the animal fades in
@@ -394,6 +771,7 @@
       left: state.puzzle.left.map(makePiece),
       right: state.puzzle.right.map(makePiece)
     };
+    normalizeBoard();
     dialRange.value = state.dialValue;
     dialValueEl.textContent = state.dialValue;
     dialEl.classList.remove('hidden');
@@ -447,7 +825,65 @@
     state.board = state.history.pop();
     state.won = false;
     state.revealed = false;
+    clearMachineMsg();
     render();
+  }
+
+  // ---------- machines (level 4): clone and share, always both sides at once ----------
+  var MACHINE_MSG_MS = 3200;
+  var machineMsgTimer = null;
+  var shareTimer = null;
+  function clearMachineMsg() {
+    if (machineMsgTimer !== null) { clearTimeout(machineMsgTimer); machineMsgTimer = null; }
+    machineMsgEl.textContent = '';
+  }
+  function showMachineMsg(text) {
+    clearMachineMsg();
+    machineMsgEl.textContent = text;
+    machineMsgTimer = setTimeout(clearMachineMsg, MACHINE_MSG_MS);
+  }
+  function machinesActive() {
+    return !!currentLevel().machines && !state.won && !state.dialMode;
+  }
+  function machineClone(n) {
+    if (!machinesActive()) return;
+    clearMachineMsg();
+    pushHistory();
+    state.board = cloneBoardTimes(state.board, n);
+    afterMove();   // merges half-boxes, hands out ids (the copies fade in), checks for a win
+  }
+  function machineShare(n) {
+    if (!machinesActive()) return;
+    if (!canShareBoard(state.board, n)) {
+      showMachineMsg("That won't share evenly. Try taking something off first.");
+      return;
+    }
+    clearMachineMsg();
+    pushHistory();
+    var next = shareBoard(state.board, n);
+    // pieces that are not kept fade out first; the board redraws once they are gone
+    var kept = {};
+    for (var i = 0; i < next.left.length; i++) if (next.left[i].id !== undefined) kept[next.left[i].id] = true;
+    for (var j = 0; j < next.right.length; j++) if (next.right[j].id !== undefined) kept[next.right[j].id] = true;
+    var els = svg.querySelectorAll('.piece');
+    for (var k = 0; k < els.length; k++) {
+      if (!kept[parseInt(els[k].getAttribute('data-id'), 10)]) els[k].classList.add('vanish');
+    }
+    state.board = next;
+    normalizeBoard();
+    if (shareTimer !== null) clearTimeout(shareTimer);
+    shareTimer = setTimeout(function () {
+      shareTimer = null;
+      render();
+      maybeWin();
+    }, 270);
+  }
+  for (var mb = 0; mb < machineBtns.length; mb++) {
+    machineBtns[mb].addEventListener('click', function (ev) {
+      var btn = ev.currentTarget;
+      var n = parseInt(btn.getAttribute('data-n'), 10);
+      if (btn.getAttribute('data-machine') === 'clone') machineClone(n); else machineShare(n);
+    });
   }
 
   // ---------- palette ----------
@@ -476,12 +912,12 @@
   // ---------- drag and drop (pointer events) ----------
   var drag = null; // { kind: 'palette'|'piece', value, id, side, startX, startY, moved, ghost, el }
 
-  function makeGhost(kind, p) {
+  function makeGhost(kind, p, frac) {
     var g = document.createElement('div');
     g.id = 'ghost';
     if (kind === 'box') {
       g.className = 'box';
-      g.style.width = (BOX_SIZE * 1.15) + 'px';
+      g.style.width = (BOX_SIZE * (frac || 1) * 1.15) + 'px';
       g.style.height = (BOX_SIZE * 1.15) + 'px';
       g.textContent = '?';
     } else {
@@ -531,7 +967,7 @@
       var loc = findPiece(id);
       if (!loc) return;
       var p = state.board[loc.side][loc.idx];
-      drag = { kind: 'piece', id: id, side: loc.side, type: p.type, value: p.value,
+      drag = { kind: 'piece', id: id, side: loc.side, type: p.type, value: p.value, frac: pieceFrac(p),
         startX: ev.clientX, startY: ev.clientY, moved: false, el: pieceEl, ghost: null };
       ev.preventDefault();
       return;
@@ -549,7 +985,7 @@
     if (!drag.moved) {
       if (Math.abs(dx) < DRAG_THRESHOLD && Math.abs(dy) < DRAG_THRESHOLD) return;
       drag.moved = true;
-      drag.ghost = makeGhost(drag.kind === 'piece' && drag.type === 'box' ? 'box' : 'weight', drag.value);
+      drag.ghost = makeGhost(drag.kind === 'piece' && drag.type === 'box' ? 'box' : 'weight', drag.value, drag.frac);
       if (drag.kind === 'piece') drag.el.classList.add('lifting');
       clearSelection();
     }
@@ -626,15 +1062,22 @@
     return false;
   }
   function hasBox(arr) { for (var i = 0; i < arr.length; i++) if (arr[i].type === 'box') return true; return false; }
+  var SOLVER_MAX_DEPTH = 6;
   FLAT.forEach(function (f) {
     var pz = f.puzzle;
     var tag = 'Level ' + (f.level + 1) + ' puzzle ' + (f.pos + 1);
-    var l = sideTotal(pz.left.map(function (s) { return { type: s.type, value: s.value || 0 }; }), pz.hiddenWeight);
-    var r = sideTotal(pz.right.map(function (s) { return { type: s.type, value: s.value || 0 }; }), pz.hiddenWeight);
+    var l = sideTotal(pz.left.map(copyPiece), pz.hiddenWeight);
+    var r = sideTotal(pz.right.map(copyPiece), pz.hiddenWeight);
     if (pz.goal === 'isolate') {
       console.assert(hasBox(pz.left) || hasBox(pz.right), tag + ' has no box');
       console.assert(l === r, tag + ' does not start level: ' + l + ' vs ' + r);
-      console.assert(solvableByRemoval(pz), tag + ' cannot be finished by removing pieces only');
+      if (LEVELS[f.level].machines) {
+        // machine levels: a short search over remove / clone / share moves must reach a win
+        console.assert(solveByMachines(pz, SOLVER_MAX_DEPTH).depth >= 0,
+          tag + ' cannot be finished with remove, clone and share within ' + SOLVER_MAX_DEPTH + ' moves');
+      } else {
+        console.assert(solvableByRemoval(pz), tag + ' cannot be finished by removing pieces only');
+      }
     } else {
       // "make it level" puzzles: no boxes, and must not already be level (nothing to do)
       console.assert(!hasBox(pz.left) && !hasBox(pz.right), tag + ' should not contain a box');
@@ -643,5 +1086,16 @@
   });
 
   // ---------- go ----------
+  renderFarm();
   loadPuzzle(0);
+  // the ground's width is only known once laid out; re-place the animals after a resize
+  window.addEventListener('resize', function () {
+    var gw = groundWidth();
+    for (var i = 0; i < critters.length; i++) {
+      var c = critters[i];
+      c.x = Math.min(c.x, Math.max(0, gw - c.w));
+      c.target = Math.min(c.target, Math.max(0, gw - c.w));
+      placeCritter(c);
+    }
+  });
 })();

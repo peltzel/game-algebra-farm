@@ -28,6 +28,7 @@
 <div id="hint" class="hidden"></div>
 
 <main>
+<div id="play">
   <svg id="board" viewBox="0 0 900 420" xmlns="http://www.w3.org/2000/svg">
     <!-- ground and fulcrum -->
     <line x1="80" y1="400" x2="820" y2="400" class="ground"></line>
@@ -57,6 +58,16 @@
   <div id="status" class="status"></div>
   <div id="notation" class="notation">0 = 0</div>
 
+  <!-- level 4 only: machines that act on both sides at once -->
+  <div id="machines" class="machines hidden">
+    <span class="label">Machines:</span>
+    <button id="clone2Btn" class="machine" data-machine="clone" data-n="2">Clone &times;2</button>
+    <button id="clone3Btn" class="machine" data-machine="clone" data-n="3">Clone &times;3</button>
+    <button id="share2Btn" class="machine" data-machine="share" data-n="2">Share by 2</button>
+    <button id="share3Btn" class="machine" data-machine="share" data-n="3">Share by 3</button>
+    <span id="machineMsg" class="machine-msg"></span>
+  </div>
+
   <div id="levelDone" class="level-done hidden">
     <span id="levelDoneText">Level done!</span>
     <button id="levelDoneNextBtn" class="accent">Next &#9654;</button>
@@ -67,6 +78,21 @@
     <input id="dialRange" type="range" min="0" max="12" step="1" value="4">
     <button id="dialNextBtn" class="accent">Next puzzle &#9654;</button>
   </div>
+</div>
+
+<aside id="farm" class="farm">
+  <div class="farm-head">
+    <div>
+      <div class="farm-title">Your farm</div>
+      <div id="farmCount" class="farm-count">0 animals</div>
+    </div>
+    <button id="farmResetBtn" class="linkish" title="Send every animal away and start again">Reset farm</button>
+  </div>
+  <div id="farmGround" class="farm-ground">
+    <!-- animals filled by app.js -->
+  </div>
+  <div class="farm-legend">&#9733; rare</div>
+</aside>
 </main>
 
 <footer>

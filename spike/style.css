@@ -76,9 +76,17 @@ button:disabled { opacity: 0.4; cursor: default; }
 /* ---------- board ---------- */
 main {
   flex: 1 1 auto;
-  display: flex; flex-direction: column; align-items: center;
+  display: flex; flex-direction: row; align-items: stretch;
+  gap: 16px;
   min-height: 0;
   padding: 4px 16px 0;
+}
+
+/* the seesaw column: everything that was in main before the farm arrived */
+#play {
+  flex: 1 1 auto;
+  min-width: 0; min-height: 0;
+  display: flex; flex-direction: column; align-items: center;
 }
 
 #board {
@@ -134,6 +142,25 @@ main {
   margin-top: 2px;
 }
 .status.win { color: #2e8b57; font-size: 24px; }
+.status { text-align: center; }
+/* second line on the win screen: "A dog joins your farm." */
+.status .farm-note { font-size: 18px; font-weight: 700; margin-top: 1px; }
+.status .farm-note.common { color: #5a8a6a; }
+.status .farm-note.uncommon { color: #b8860b; }
+.status .farm-note.rare { color: #2f6db5; }
+.status .farm-note.legendary {
+  color: #8a2be2;
+  animation: hue-spin 3s linear infinite;
+}
+
+/* ---------- colour variants (shared by the box reveal and the farm) ---------- */
+.tint-uncommon { filter: sepia(1) saturate(3) hue-rotate(-12deg); }
+.tint-rare { filter: sepia(1) saturate(3) hue-rotate(180deg); }
+.tint-legendary { animation: hue-spin 3s linear infinite; }
+@keyframes hue-spin {
+  from { filter: hue-rotate(0deg) saturate(1.6); }
+  to   { filter: hue-rotate(360deg) saturate(1.6); }
+}
 
 .notation {
   font-family: "SF Mono", Menlo, Consolas, "Courier New", monospace;
@@ -150,6 +177,39 @@ main {
 }
 .notation .neq { color: #9a9a9a; }
 .notation .eq { color: #2e8b57; }
+
+/* ---------- machines (level 4): clone and share, both sides at once ---------- */
+.machines {
+  display: flex; align-items: center; gap: 8px;
+  margin-top: 6px;
+  padding: 4px 12px;
+  background: #ffffff;
+  border: 2px solid #e4ded2;
+  border-radius: 12px;
+}
+.machines .label { margin-right: 2px; }
+.machines button.machine { font-size: 15px; padding: 5px 11px; border-radius: 9px; }
+.machines button.machine[data-machine=clone] { background: #e6f0fa; border-color: #a9cdf6; }
+.machines button.machine[data-machine=clone]:hover:not(:disabled) { background: #d4e6f8; }
+.machines button.machine[data-machine=share] { background: #fdeee3; border-color: #f3c4a3; }
+.machines button.machine[data-machine=share]:hover:not(:disabled) { background: #fbdfcc; }
+.machine-msg {
+  font-size: 15px; font-weight: 600; color: #b85a1f;
+  margin-left: 6px; min-width: 120px;
+}
+/* a touch less board when the machine row is on screen, so the dial still fits at 1280x800 */
+#play.with-machines #board { max-height: 44vh; }
+
+/* machine animations: cloned pieces fade in, shared-away pieces fade out */
+@keyframes piece-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.piece.fresh { animation: piece-in 380ms ease-out; }
+.piece.vanish { opacity: 0; transition: opacity 260ms ease; }
+
+/* half a box: half the width, with a dashed cut edge */
+.piece.box.half .cut { stroke: #b85a1f; stroke-width: 3; stroke-dasharray: 5 4; }
 
 /* ---------- level done ---------- */
 .level-done {
@@ -174,6 +234,74 @@ main {
 }
 .dial strong { font-size: 26px; min-width: 36px; display: inline-block; text-align: center; }
 .dial input[type=range] { width: 320px; }
+
+/* ---------- farm ---------- */
+.farm {
+  flex: 0 0 230px;
+  display: flex; flex-direction: column;
+  min-height: 0;
+  background: #ffffff;
+  border: 2px solid #e4ded2;
+  border-radius: 14px;
+  padding: 8px 10px 6px;
+}
+.farm-head {
+  display: flex; justify-content: space-between; align-items: flex-start;
+  margin-bottom: 6px;
+}
+.farm-title { font-size: 20px; font-weight: 700; color: #3b5b7a; }
+.farm-count { font-size: 15px; color: #777; font-weight: 600; }
+button.linkish {
+  font-size: 13px; font-weight: 600;
+  padding: 2px 4px;
+  border: none; background: none;
+  color: #999;
+  text-decoration: underline;
+  cursor: pointer;
+}
+button.linkish:hover { color: #3b5b7a; background: none; }
+
+.farm-ground {
+  flex: 1 1 auto;
+  position: relative;
+  min-height: 120px;
+  overflow: hidden;
+  border-radius: 10px;
+  border: 2px solid #b9d9a8;
+  /* pale green sky-ish ground with a darker grass strip along the bottom */
+  background: linear-gradient(to bottom, #e9f5df 0%, #e9f5df 50%, #cfe8bd 50%, #cfe8bd 100%);
+}
+.farm-legend { font-size: 13px; color: #999; margin-top: 4px; text-align: right; }
+
+.farm-animal {
+  position: absolute;
+  left: 0; bottom: 0;
+  will-change: left;
+}
+.farm-animal .badge {
+  position: relative;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 50%;
+  background: #f6f2e8;
+  border: 2px solid rgba(0, 0, 0, 0.08);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+}
+.farm-animal.uncommon .badge { background: #ffe08a; border-color: #e0b43a; }
+.farm-animal.rare .badge { background: #a9cdf6; border-color: #2f6db5; }
+.farm-animal.legendary .badge {
+  background: linear-gradient(135deg, #ffb3b3, #ffe28a, #b3ffc6, #a9cdf6, #e2b3ff);
+  border-color: #8a2be2;
+  animation: hue-spin 3s linear infinite;
+}
+.farm-animal .emoji { display: inline-block; line-height: 1; }
+.farm-animal.face-right .emoji { transform: scaleX(-1); }
+.farm-animal .star {
+  position: absolute; right: -4px; top: -6px;
+  font-size: 13px; line-height: 1;
+  color: #e0b43a;
+  text-shadow: 0 0 2px #fff;
+}
+.farm-animal.legendary .star { color: #8a2be2; }
 
 /* ---------- footer: palette ---------- */
 footer {
