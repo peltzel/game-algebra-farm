@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Seesaw</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header id="topbar">
+  <div class="left-group">
+    <button id="prevBtn" title="Previous puzzle">&#9664;</button>
+    <span id="counter">Puzzle 1 of 11</span>
+    <button id="nextBtn" title="Next puzzle">&#9654;</button>
+    <span id="title" class="puzzle-title">Make it level</span>
+  </div>
+  <div class="right-group">
+    <button id="hintBtn">Hint</button>
+    <button id="predictBtn" title="Freeze the seesaw for the next move">Predict</button>
+    <button id="showBtn" class="hidden accent">Show</button>
+    <button id="undoBtn">Undo</button>
+    <button id="resetBtn">Reset</button>
+  </div>
+</header>
+
+<div id="hint" class="hidden"></div>
+
+<main>
+  <svg id="board" viewBox="0 0 900 420" xmlns="http://www.w3.org/2000/svg">
+    <!-- ground and fulcrum -->
+    <line x1="80" y1="400" x2="820" y2="400" class="ground"></line>
+    <polygon points="450,282 398,400 502,400" class="fulcrum"></polygon>
+
+    <!-- everything that tilts lives in this group -->
+    <g id="beamGroup">
+      <rect x="150" y="272" width="600" height="16" rx="8" class="beam"></rect>
+      <circle cx="450" cy="280" r="9" class="pivot"></circle>
+
+      <g id="pan-left" class="pan" data-side="left">
+        <rect class="dropzone" x="20" y="40" width="340" height="200" data-side="left"></rect>
+        <line x1="190" y1="272" x2="190" y2="238" class="post"></line>
+        <rect x="30" y="226" width="320" height="12" rx="6" class="pan-plate" data-side="left"></rect>
+        <g class="pieces"></g>
+      </g>
+
+      <g id="pan-right" class="pan" data-side="right">
+        <rect class="dropzone" x="540" y="40" width="340" height="200" data-side="right"></rect>
+        <line x1="710" y1="272" x2="710" y2="238" class="post"></line>
+        <rect x="550" y="226" width="320" height="12" rx="6" class="pan-plate" data-side="right"></rect>
+        <g class="pieces"></g>
+      </g>
+    </g>
+  </svg>
+
+  <div id="status" class="status"></div>
+  <div id="notation" class="notation">0 = 0</div>
+
+  <div id="dial" class="dial hidden">
+    <label for="dialRange">What if the box weighed&hellip; <strong id="dialValue">4</strong></label>
+    <input id="dialRange" type="range" min="0" max="12" step="1" value="4">
+    <button id="dialNextBtn" class="accent">Next puzzle &#9654;</button>
+  </div>
+</main>
+
+<footer>
+  <div id="costumes" class="costumes">
+    <span class="label">Box costume:</span>
+    <!-- filled by app.js -->
+  </div>
+  <div id="palette" class="palette">
+    <span class="label">Weights:</span>
+    <!-- filled by app.js -->
+  </div>
+</footer>
+
+<script src="puzzles.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
