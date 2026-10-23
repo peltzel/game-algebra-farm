@@ -1,6 +1,6 @@
 # Seesaw Algebra: product requirements
 
-Working title. Status: draft for Ben's approval, 2026-10-22.
+Working title. Status: draft for Ben's approval, 2026-10-22; fading decision recorded 2026-10-23.
 
 ## 1. What this is and why
 
@@ -57,6 +57,8 @@ Non-goals (not this game):
 - Two different unknowns at once (systems of equations).
 - Reps, scoring, leaderboards, timed drills. The reps game is a fast-follow
   product, not a mode of this one.
+- Fading the seesaw away and having the kid act on symbols alone. That is
+  the reps game's job (see 4.10).
 
 Anti-goals (would make it a failure even if it technically works):
 
@@ -189,12 +191,12 @@ writing `2x + 3` becomes "you left stuff in a bag." Same-shaped things stack
 - Formatting: boxes counted first (`2x`), known weights summed (`+ 7`),
   empty side shows `0`.
 - Stage 1 shows no notation at all. Then the subtitle appears and updates
-  live. Later the picture fades and only the symbols stay, with the
-  seesaw available on request. This fading is what turns a toy into
-  transfer to the classroom.
-- Scope of fading is an open question (section 12). Until Ben decides, the
-  build plan includes the live subtitle only, with the seesaw always on
-  screen.
+  live. The seesaw is always on screen in this game.
+- Fading the picture away so only the symbols remain is what turns a toy
+  into transfer to the classroom, and it belongs to the reps game, not this
+  one (Ben's decision, 2026-10-23). This game ends with the kid reading
+  symbols fluently as a subtitle; the reps game owns the move to acting on
+  symbols alone.
 
 ### 4.11 Tipping is information
 
@@ -333,12 +335,6 @@ Watch list for the first kid test, chosen in advance so the test can fail:
 - Whether stage 3 (lifters) comes before or after stage 4 (cloner). The
   ladder above says lifters first because they are needed to undo any
   subtraction; the builder may argue the other way after the spike.
-- How much of the fading (4.10) belongs in this game versus the reps game.
-  Options: (a) none here, this game always shows the seesaw and the reps game
-  owns the transition to symbols; (b) a final stage here where the seesaw
-  hides and the kid picks moves from a short menu ("take 3 off both sides")
-  while only the subtitle updates. (b) adds a second interaction model to
-  this game.
 - Whether a tutor-authored puzzle should be shareable (a URL) in the first
   real build.
 
