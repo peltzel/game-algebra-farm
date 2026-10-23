@@ -44,6 +44,7 @@
         <rect class="dropzone" x="20" y="40" width="340" height="200" data-side="left"></rect>
         <line x1="190" y1="272" x2="190" y2="238" class="post"></line>
         <rect x="30" y="226" width="320" height="12" rx="6" class="pan-plate" data-side="left"></rect>
+        <g class="lock"></g>
         <g class="trays"></g>
         <g class="pieces"></g>
         <g class="anim"></g>
@@ -53,6 +54,7 @@
         <rect class="dropzone" x="540" y="40" width="340" height="200" data-side="right"></rect>
         <line x1="710" y1="272" x2="710" y2="238" class="post"></line>
         <rect x="550" y="226" width="320" height="12" rx="6" class="pan-plate" data-side="right"></rect>
+        <g class="lock"></g>
         <g class="trays"></g>
         <g class="pieces"></g>
         <g class="anim"></g>
@@ -70,6 +72,8 @@
 
   <div id="status" class="status"></div>
   <div id="notation" class="notation">0 = 0</div>
+  <!-- one-line note when a move touches a bolted-down side; only takes up room on levels with a lock -->
+  <div id="lockMsg" class="lock-msg" aria-live="polite"></div>
 
   <!-- level 4 only: machines that act on both sides at once -->
   <div id="machines" class="machines hidden">

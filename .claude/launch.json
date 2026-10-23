@@ -4,8 +4,8 @@
     {
       "name": "spike",
       "runtimeExecutable": "python3",
-      "runtimeArgs": ["-m", "http.server", "8765", "--directory", "spike"],
-      "port": 8765
+      "runtimeArgs": ["-m", "http.server", "8787", "--directory", "spike"],
+      "port": 8787
     }
   ]
 }

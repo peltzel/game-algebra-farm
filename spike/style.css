@@ -133,6 +133,40 @@ main {
 .piece.box.open .reveal { opacity: 1; }
 .piece.box.open .mark { opacity: 0; }
 
+/* ---------- locks: a bolted-down side (level 1) ---------- */
+/* padlock hanging from the outer end of the plate */
+.pan .lock .hasp { fill: #7b4f25; }
+.pan .lock .shackle { fill: none; stroke: #4a4a4a; stroke-width: 3.5; stroke-linecap: round; }
+.pan .lock .body { fill: #7a7a7a; stroke: #3f3f3f; stroke-width: 2.5; }
+.pan .lock .keyhole { fill: #f4f1ea; }
+/* bolted pieces: a touch muted, with a thin bolt line along the bottom edge */
+.piece.locked { cursor: not-allowed; }
+.piece.locked.weight rect { fill: #8db3dd; stroke: #4a7cb3; }
+.piece.locked.box .body { fill: #e9a070; }
+.piece.locked .bolt { stroke: #2b4a6a; stroke-width: 2.5; stroke-linecap: round; opacity: 0.7; }
+.piece.locked .bolt-head { fill: #2b4a6a; opacity: 0.8; }
+/* dragging over a bolted side: a grey "no" highlight instead of the usual gold */
+.pan.over-no .pan-plate { fill: #cfcac0; }
+.pan.over-no .dropzone { fill: rgba(120, 120, 120, 0.12); }
+#ghost.no { opacity: 0.55; filter: grayscale(0.7); }
+/* a palette block dropped on a bolted side slides back to the palette */
+#ghost.snap { transition: left 220ms ease-in, top 220ms ease-in, opacity 220ms ease-in; }
+/* a refused move: the piece or the whole pan wobbles for a moment */
+@keyframes lock-wobble {
+  0%, 100% { transform: translateX(0) rotate(0deg); }
+  20%      { transform: translateX(-4px) rotate(-2deg); }
+  40%      { transform: translateX(4px) rotate(2deg); }
+  60%      { transform: translateX(-3px) rotate(-1.5deg); }
+  80%      { transform: translateX(3px) rotate(1.5deg); }
+}
+.pieces .piece.wobble, .pan.wobble {
+  transform-box: fill-box; transform-origin: 50% 100%;
+  animation: lock-wobble 300ms ease-in-out;
+}
+/* the one-line note under the notation */
+.lock-msg { font-size: 17px; font-weight: 600; color: #8a5a2b; text-align: center; }
+#play.has-locks .lock-msg { min-height: 30px; padding-top: 6px; }
+
 /* ---------- notation ---------- */
 .status {
   min-height: 28px;

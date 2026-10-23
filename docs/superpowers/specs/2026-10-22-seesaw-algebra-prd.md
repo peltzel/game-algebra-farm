@@ -335,7 +335,16 @@ What the player can do in a solving puzzle (builder's call, 2026-10-22):
 | 6 | box on both sides (`3x + 2 = x + 10`) | collecting like terms across the equals sign |
 
 Each stage is one or more named levels (4.13). The dial is available from
-stage 2 onward; the costume is deferred (4.8). Puzzles are data, not code, so the tutor sandbox and the level
+stage 2 onward; the costume is deferred (4.8).
+
+Puzzles can lock a side, or a single piece, so it cannot be changed (Ben,
+2026-10-23). Stage 1 locks the side that holds the target weights, because
+the lesson is "make the other side match," and without the lock a kid can
+rebuild the given side instead. The lock is visible (a padlock on the pan,
+pieces drawn as bolted down) and a blocked move wobbles and says "That side
+is bolted down. Change the other side." Later stages leave both sides open,
+since their win condition (one box alone) cannot be reached by clearing
+the board. Puzzles are data, not code, so the tutor sandbox and the level
 list share one format. Each puzzle specifies the actual pieces on each side
 (a 7 may be a single 7-block or a 4 and a 3), because which pieces exist
 decides which removals are possible.

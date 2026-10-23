@@ -496,6 +496,7 @@
   function makePiece(spec) {
     var p = { id: nextId++, type: spec.type, value: spec.type === 'weight' ? spec.value : 0 };
     if (spec.type === 'box') p.fraction = spec.fraction || 1;
+    if (spec.locked) p.locked = true;   // bolted down on its own, whatever side it is on
     return p;
   }
   function cloneBoard(b) {
@@ -552,6 +553,44 @@
     if (!state.won || !state.revealed || state.puzzle.goal !== 'isolate') return false;
     return !state.dialMode || state.dialValue === state.hiddenWeight;
   }
+
+  // ---------- locks ----------
+  // A side named in puzzle.locked is bolted down: nothing goes on it or comes off it. A piece
+  // with locked: true is bolted down on its own. Machines (level 4) ignore both.
+  function sideLocked(side) {
+    var locks = state.puzzle && state.puzzle.locked;
+    return !!locks && locks.indexOf(side) >= 0;
+  }
+  function pieceLocked(p, side) { return sideLocked(side) || !!(p && p.locked); }
+  function hasAnyLock() {
+    if (sideLocked('left') || sideLocked('right')) return true;
+    var b = state.board;
+    for (var i = 0; i < b.left.length; i++) if (b.left[i].locked) return true;
+    for (var j = 0; j < b.right.length; j++) if (b.right[j].locked) return true;
+    return false;
+  }
+  var lockMsgEl = $('lockMsg');
+  var LOCK_MSG_MS = 2500, LOCK_WOBBLE_MS = 300;
+  var lockMsgTimer = null;
+  function clearLockMsg() {
+    if (lockMsgTimer !== null) { clearTimeout(lockMsgTimer); lockMsgTimer = null; }
+    lockMsgEl.textContent = '';
+  }
+  function showLockMsg() {
+    clearLockMsg();
+    lockMsgEl.textContent = 'That side is bolted down. Change the other side.';
+    lockMsgTimer = setTimeout(clearLockMsg, LOCK_MSG_MS);
+  }
+  function wobble(el) {
+    if (!el) return;
+    el.classList.remove('wobble');
+    el.getBoundingClientRect();   // so a second wobble restarts the animation
+    el.classList.add('wobble');
+    setTimeout(function () { el.classList.remove('wobble'); }, LOCK_WOBBLE_MS + 40);
+  }
+  function pieceElById(id) { return svg.querySelector('.pieces .piece[data-id="' + id + '"]'); }
+  // a move that touches a bolted-down side or piece: wobble what was touched, say why, change nothing
+  function refuseLocked(el) { wobble(el); showLockMsg(); return false; }
 
   // ---------- notation ----------
   function formatSide(pieces, letter, substitute) {
@@ -672,6 +711,34 @@
     return out;
   }
 
+  // a thin bolt line along the bottom edge, with a bolt head at each end: the piece is fastened down
+  function addBolt(el, e) {
+    var y = e.y + e.h - 7, x1 = e.x + 10, x2 = e.x + e.w - 10;
+    el.appendChild(svgEl('line', { 'class': 'bolt', x1: x1, y1: y, x2: x2, y2: y }));
+    el.appendChild(svgEl('circle', { 'class': 'bolt-head', cx: x1, cy: y, r: 2.6 }));
+    el.appendChild(svgEl('circle', { 'class': 'bolt-head', cx: x2, cy: y, r: 2.6 }));
+  }
+
+  // padlock hanging from the outer end of the plate: a hasp on the plate, a shackle through it, the body below
+  var lockLayers = { left: panEls.left.querySelector('.lock'), right: panEls.right.querySelector('.lock') };
+  function renderLock(side) {
+    var layer = lockLayers[side];
+    while (layer.firstChild) layer.removeChild(layer.firstChild);
+    if (!sideLocked(side)) return;
+    var cx = side === 'left' ? 46 : 854, top = PAN_TOP + 12;   // just under the plate
+    var g = svgEl('g', { 'class': 'padlock' });
+    var title = svgEl('title', {});
+    title.textContent = 'This side is bolted down';
+    g.appendChild(title);
+    g.appendChild(svgEl('rect', { 'class': 'hasp', x: cx - 2.5, y: top, width: 5, height: 9, rx: 1 }));
+    g.appendChild(svgEl('path', { 'class': 'shackle',
+      d: 'M' + (cx - 7) + ' ' + (top + 19) + ' V ' + (top + 13) + ' a 7 7 0 0 1 14 0 V ' + (top + 19) }));
+    g.appendChild(svgEl('rect', { 'class': 'body', x: cx - 12, y: top + 18, width: 24, height: 18, rx: 3.5 }));
+    g.appendChild(svgEl('circle', { 'class': 'keyhole', cx: cx, cy: top + 26, r: 2.4 }));
+    g.appendChild(svgEl('rect', { 'class': 'keyhole', x: cx - 1.2, y: top + 26, width: 2.4, height: 5, rx: 1 }));
+    layer.appendChild(g);
+  }
+
   function renderSide(side) {
     var layer = pieceLayers[side];
     while (layer.firstChild) layer.removeChild(layer.firstChild);
@@ -682,8 +749,11 @@
       var el = e.p.type === 'box' ? drawBox(e.p, e.x, e.y, open) : drawWeight(e.p, e.x, e.y);
       el.setAttribute('data-side', side);
       if (freshIds[e.p.id]) el.classList.add('fresh');   // just came out of a machine: fade in
+      if (pieceLocked(e.p, side)) { el.classList.add('locked'); addBolt(el, e); }
       layer.appendChild(el);
     }
+    panEls[side].classList.toggle('locked', sideLocked(side));
+    renderLock(side);
   }
 
   function renderLevelStrip() {
@@ -731,6 +801,7 @@
     var showMachines = !!lv.machines;
     machinesEl.classList.toggle('hidden', !showMachines);
     playEl.classList.toggle('with-machines', showMachines);
+    playEl.classList.toggle('has-locks', hasAnyLock());   // reserves the line for the lock message
     for (var mi = 0; mi < machineBtns.length; mi++) machineBtns[mi].disabled = state.won || state.dialMode || state.busy;
     hintEl.classList.toggle('hidden', !state.hintShown);
     hintEl.textContent = state.puzzle.hint;
@@ -815,6 +886,7 @@
     cancelAnimation();   // a machine mid-run stops here
     clearSelection();
     clearMachineMsg();
+    clearLockMsg();
     normalizeBoard();
     render();
   }
@@ -906,28 +978,36 @@
   // ---------- board mutations (with history) ----------
   function pushHistory() { state.history.push(cloneBoard(state.board)); }
 
+  // Each returns true when the board changed. A bolted-down side or piece refuses (wobble + message).
   function addPiece(side, spec) {
-    if (state.dialMode || state.busy) return;
+    if (state.dialMode || state.busy) return false;
+    if (sideLocked(side)) return refuseLocked(panEls[side]);
     pushHistory();
     state.board[side].push(makePiece(spec));
     afterMove();
+    return true;
   }
   function removePieceById(id) {
-    if (state.dialMode || state.busy) return;
+    if (state.dialMode || state.busy) return false;
     var loc = findPiece(id);
-    if (!loc) return;
+    if (!loc) return false;
+    if (pieceLocked(state.board[loc.side][loc.idx], loc.side)) return refuseLocked(pieceElById(id));
     pushHistory();
     state.board[loc.side].splice(loc.idx, 1);
     afterMove();
+    return true;
   }
   function movePiece(id, toSide) {
-    if (state.dialMode || state.busy) return;
+    if (state.dialMode || state.busy) return false;
     var loc = findPiece(id);
-    if (!loc || loc.side === toSide) return;
+    if (!loc || loc.side === toSide) return false;
+    if (pieceLocked(state.board[loc.side][loc.idx], loc.side)) return refuseLocked(pieceElById(id));
+    if (sideLocked(toSide)) return refuseLocked(panEls[toSide]);
     pushHistory();
     var p = state.board[loc.side].splice(loc.idx, 1)[0];
     state.board[toSide].push(p);
     afterMove();
+    return true;
   }
   function findPiece(id) {
     var sides = ['left', 'right'];
@@ -1379,6 +1459,15 @@
     return g;
   }
   function moveGhost(g, x, y) { g.style.left = x + 'px'; g.style.top = y + 'px'; }
+  // a palette block dropped on a bolted side: the ghost slides back to its palette block, then goes
+  function snapGhostBack(ghost, palEl) {
+    var r = palEl.getBoundingClientRect();
+    ghost.classList.add('snap');
+    ghost.getBoundingClientRect();
+    moveGhost(ghost, r.left + r.width / 2, r.top + r.height / 2);
+    ghost.style.opacity = '0.4';
+    setTimeout(function () { if (ghost.parentNode) ghost.parentNode.removeChild(ghost); }, 240);
+  }
 
   function sideAtPoint(x, y) {
     var el = document.elementFromPoint(x, y);
@@ -1388,9 +1477,14 @@
     }
     return null;
   }
+  // the pan under the pointer lights up; a bolted-down pan greys out instead
   function highlightSide(side) {
-    panEls.left.classList.toggle('over', side === 'left');
-    panEls.right.classList.toggle('over', side === 'right');
+    var sides = ['left', 'right'];
+    for (var i = 0; i < 2; i++) {
+      var on = side === sides[i], no = on && sideLocked(sides[i]);
+      panEls[sides[i]].classList.toggle('over', on && !no);
+      panEls[sides[i]].classList.toggle('over-no', no);
+    }
   }
 
   function closestPieceEl(el) {
@@ -1416,6 +1510,7 @@
       var loc = findPiece(id);
       if (!loc) return;
       var p = state.board[loc.side][loc.idx];
+      if (pieceLocked(p, loc.side)) { ev.preventDefault(); refuseLocked(pieceEl); return; }
       drag = { kind: 'piece', id: id, side: loc.side, type: p.type, value: p.value, frac: pieceFrac(p),
         startX: ev.clientX, startY: ev.clientY, moved: false, el: pieceEl, ghost: null };
       ev.preventDefault();
@@ -1439,7 +1534,9 @@
       clearSelection();
     }
     moveGhost(drag.ghost, ev.clientX, ev.clientY);
-    highlightSide(sideAtPoint(ev.clientX, ev.clientY));
+    var over = sideAtPoint(ev.clientX, ev.clientY);
+    highlightSide(over);
+    drag.ghost.classList.toggle('no', !!over && sideLocked(over));
   }
 
   function onPointerUp(ev) {
@@ -1447,7 +1544,11 @@
     var d = drag;
     drag = null;
     highlightSide(null);
-    if (d.ghost) d.ghost.parentNode.removeChild(d.ghost);
+    var dropSide = d.moved ? sideAtPoint(ev.clientX, ev.clientY) : null;
+    if (d.ghost) {
+      if (d.kind === 'palette' && dropSide && sideLocked(dropSide)) snapGhostBack(d.ghost, d.el);
+      else d.ghost.parentNode.removeChild(d.ghost);
+    }
     if (d.el && d.el.classList) d.el.classList.remove('lifting');
 
     if (!d.moved) {
@@ -1462,7 +1563,7 @@
       return;
     }
 
-    var side = sideAtPoint(ev.clientX, ev.clientY);
+    var side = dropSide;
     if (d.kind === 'palette') {
       if (side) addPiece(side, { type: 'weight', value: d.value });
     } else if (d.kind === 'piece') {
@@ -1531,6 +1632,19 @@
       // "make it level" puzzles: no boxes, and must not already be level (nothing to do)
       console.assert(!hasBox(pz.left) && !hasBox(pz.right), tag + ' should not contain a box');
       console.assert(l !== r || pz.left.length === 0 || pz.right.length === 0, tag + ' is already level at the start');
+      // locks: at least one side open, and the open side must be able to catch up by adding
+      // palette weights only (any non-negative gap can be made from 1s)
+      var locks = pz.locked || [];
+      for (var li = 0; li < locks.length; li++) {
+        console.assert(locks[li] === 'left' || locks[li] === 'right', tag + ' locks an unknown side: ' + locks[li]);
+      }
+      var leftLocked = locks.indexOf('left') >= 0, rightLocked = locks.indexOf('right') >= 0;
+      console.assert(!(leftLocked && rightLocked), tag + ' locks both sides, so nothing can be changed');
+      if (leftLocked !== rightLocked) {
+        var openTotal = leftLocked ? r : l, lockedTotal = leftLocked ? l : r;
+        console.assert(openTotal <= lockedTotal,
+          tag + ': the open side (' + openTotal + ') already outweighs the bolted side (' + lockedTotal + '), so adding weights cannot level it');
+      }
     }
   });
 

@@ -7,36 +7,41 @@
 //
 // Puzzles are grouped into levels: LEVELS = [{ name, subtitle, puzzles: [...] }].
 // A level with machines: true shows the Clone / Share machine row (level 4).
+//
+// locked: ['left'] (or ['right']) bolts that whole side down: nothing can be put on it,
+//   taken off it, or moved onto or off it. Machines (level 4) ignore locks.
+// A single piece can be bolted down instead: { type: 'weight', value: 5, locked: true } (LW(5)).
 
 var W = function (v) { return { type: 'weight', value: v }; };
+var LW = function (v) { return { type: 'weight', value: v, locked: true }; };   // a bolted-down block (no puzzle uses it yet)
 var BOX = function () { return { type: 'box' }; };
 var HALFBOX = function () { return { type: 'box', fraction: 0.5 }; };
 
 var LEVELS = [
-  // ---------- Level 1: make it level (no boxes) ----------
+  // ---------- Level 1: make it level (no boxes; the given side is bolted down) ----------
   {
     name: 'Make it level',
     subtitle: 'Both sides must weigh the same',
     puzzles: [
       {
-        left: [W(5)], right: [], hiddenWeight: 0, goal: 'level',
+        left: [W(5)], right: [], hiddenWeight: 0, goal: 'level', locked: ['left'],
         hint: 'The left side weighs 5. What could you put on the right so both sides weigh the same?'
       },
       {
-        left: [W(3), W(4)], right: [W(2)], hiddenWeight: 0, goal: 'level',
+        left: [W(3), W(4)], right: [W(2)], hiddenWeight: 0, goal: 'level', locked: ['left'],
         hint: 'Add up each side first. How much more does the right side need?'
       },
       {
-        left: [W(10)], right: [W(3)], hiddenWeight: 0, goal: 'level',
+        left: [W(10)], right: [W(3)], hiddenWeight: 0, goal: 'level', locked: ['left'],
         hint: 'You can use more than one block. 10 minus 3 is how much?'
       },
       {
-        left: [W(2), W(2), W(1)], right: [], hiddenWeight: 0, goal: 'level',
+        left: [W(2), W(2), W(1)], right: [], hiddenWeight: 0, goal: 'level', locked: ['left'],
         hint: 'There is more than one right answer. A single 5 works, and so do other combinations.'
       },
       {
-        left: [W(5), W(5)], right: [W(3), W(3)], hiddenWeight: 0, goal: 'level',
-        hint: 'You could also take things OFF the left side instead of adding to the right.'
+        left: [W(5), W(5)], right: [W(3), W(3)], hiddenWeight: 0, goal: 'level', locked: ['left'],
+        hint: 'Add up each side: 5 + 5 on the left, 3 + 3 on the right. How much more does the right side need?'
       }
     ]
   },
