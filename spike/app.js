@@ -169,6 +169,22 @@
     for (var i = 0; i < farm.animals.length; i++) if (farm.animals[i].key === key) return farm.animals[i];
     return null;
   }
+  function hasFarmKey(key) {
+    for (var i = 0; i < farm.animals.length; i++) if (farm.animals[i].key === key) return true;
+    return false;
+  }
+  // another tab may have saved since this page loaded: fold its animals in first, so a save
+  // here keeps them instead of writing this page's older copy over them. True when it added any.
+  function mergeFarmFromStorage() {
+    var stored = loadFarm().animals, added = false;
+    for (var i = 0; i < stored.length; i++) {
+      var a = stored[i];
+      if (!a || !a.key || hasFarmKey(a.key)) continue;
+      farm.animals.push(a);
+      added = true;
+    }
+    return added;
+  }
   // called once on the first win of a box puzzle; returns the new entry
   function earnAnimal(index, weight) {
     var entry = { key: puzzleKey(index), weight: weight, variant: rollVariant().id };
@@ -223,7 +239,7 @@
     critters = [];
     updateFarmCount();
     farmNeedsRender = farmHidden;   // widths are unknown while hidden; redraw when shown
-    var shown = farm.animals.slice(0, FARM_MAX_SHOWN);
+    var shown = farm.animals.slice(-FARM_MAX_SHOWN);   // the newest ones: the one that just joined must show
     for (var i = 0; i < shown.length; i++) {
       var a = shown[i];
       var animal = animalFor(a.weight);
@@ -256,6 +272,7 @@
       var c = {
         el: el, w: w,
         x: Math.random() * Math.max(1, gw - w),
+        bottom: 0,
         target: 0, pauseUntil: 0,
         speed: 10 + Math.random() * 10,       // px per second: a slow amble
         facingRight: Math.random() < 0.5
@@ -263,8 +280,8 @@
       c.target = c.x;
       // spread them across the grass band (the bottom half of the ground); bigger animals
       // draw in front, and among equals the one nearer the bottom edge wins
-      var grassH = (farmGround.clientHeight || 200) * GRASS_SHARE;
-      var bottom = 6 + Math.random() * Math.max(0, grassH - w - 10);
+      var bottom = 6 + Math.random() * Math.max(0, maxBottom(w));
+      c.bottom = bottom;
       el.style.bottom = Math.round(bottom) + 'px';
       el.style.zIndex = String(100 + Math.min(a.weight, 10) * 10 + (9 - Math.min(9, Math.floor(bottom / 10))));
       placeCritter(c);
@@ -277,6 +294,12 @@
   function placeCritter(c) {
     c.el.style.left = Math.round(c.x) + 'px';
     c.el.classList.toggle('face-right', c.facingRight);
+  }
+  // highest 'bottom' (px above the ground's bottom edge) that keeps an animal of width w
+  // standing on the grass band and fully inside the ground
+  function maxBottom(w) {
+    var grassH = (farmGround.clientHeight || 200) * GRASS_SHARE;
+    return Math.max(0, grassH - w - 10);
   }
 
   function pickTarget(c, now) {
@@ -309,13 +332,19 @@
   function stopWandering() {
     if (wanderTimer !== null) { clearInterval(wanderTimer); wanderTimer = null; }
   }
-  // keep every animal inside the ground after its width changed (resize, or the column coming back)
+  // keep every animal inside the ground after its size changed (resize, the hint line above
+  // pushing it shorter, or the column coming back): sideways, and down onto the grass
   function reclampCritters() {
     var gw = groundWidth();
     for (var i = 0; i < critters.length; i++) {
       var c = critters[i];
       c.x = Math.min(c.x, Math.max(0, gw - c.w));
       c.target = Math.min(c.target, Math.max(0, gw - c.w));
+      var top = 6 + maxBottom(c.w);
+      if (c.bottom > top) {
+        c.bottom = top;
+        c.el.style.bottom = Math.round(top) + 'px';
+      }
       placeCritter(c);
     }
   }
@@ -932,11 +961,15 @@
     if (!checkWin()) return;
     state.won = true;
     completed[state.index] = true;
-    if (state.puzzle.goal === 'isolate' && !farmAnimalFor(state.index) && animalFor(state.hiddenWeight)) {
-      // first time this puzzle has been won in this browser: the animal joins the farm
-      var entry = earnAnimal(state.index, state.hiddenWeight);
-      state.variant = variantById(entry.variant);
-      state.newAnimal = true;
+    if (state.puzzle.goal === 'isolate' && animalFor(state.hiddenWeight)) {
+      if (mergeFarmFromStorage()) renderFarm();   // animals another tab earned meanwhile
+      var earned = farmAnimalFor(state.index);
+      if (!earned) {
+        // first time this puzzle has been won in this browser: the animal joins the farm
+        earned = earnAnimal(state.index, state.hiddenWeight);
+        state.newAnimal = true;
+      }
+      state.variant = variantById(earned.variant);
     }
     render();   // boxes still drawn closed (revealed is false)
     if (state.puzzle.goal === 'isolate') {
@@ -1651,9 +1684,15 @@
   // ---------- go ----------
   renderFarm();
   loadPuzzle(0);
-  // the ground's width is only known once laid out; re-place the animals after a resize
-  window.addEventListener('resize', function () {
-    if (farmHidden) return;
-    reclampCritters();
-  });
+  // the ground's size is only known once laid out, and it changes with the window and with
+  // the hint line above it; re-place the animals whenever it does (ResizeObserver sees every
+  // change, the window listener is the fallback)
+  if (window.ResizeObserver) {
+    new ResizeObserver(function () { if (!farmHidden) reclampCritters(); }).observe(farmGround);
+  } else {
+    window.addEventListener('resize', function () {
+      if (farmHidden) return;
+      reclampCritters();
+    });
+  }
 })();

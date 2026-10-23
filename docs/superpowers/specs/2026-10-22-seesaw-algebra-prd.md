@@ -432,6 +432,13 @@ Watch list for the first kid test, chosen in advance so the test can fail:
 - The internal data format for puzzles, provided the tutor sandbox can
   produce the same format.
 
+## 11a. Backlog (agreed, not yet built)
+
+- Levels unlock in order: a level opens only once the previous one is
+  finished (Ben, 2026-10-23). The tutor keeps a way to jump anywhere.
+- Farm polish: make the farm look like a farm, animals drawn rather than
+  emoji, a proper clone machine instead of a bar.
+
 ## 12. Open questions
 
 - How rarity odds and the per-kid farm interact with the tutor sandbox
